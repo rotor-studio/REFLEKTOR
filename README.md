@@ -18,7 +18,7 @@ No se alimentan motores desde el pin de 5 V del Arduino. Los motores usan una fu
 
 Instalar desde el Library Manager del Arduino IDE:
 
-- `Adafruit MCP23017 Arduino Library` / `Adafruit MCP23X17`
+- `Adafruit MCP23017 Arduino Library`
 - `Adafruit BusIO`
 
 El firmware usa:
@@ -28,6 +28,8 @@ El firmware usa:
 #include <Adafruit_MCP23X17.h>
 ```
 
+Nota: en el Library Manager hay que buscar `Adafruit MCP23017`, no `Adafruit_MCP23X17`. `Adafruit_MCP23X17.h` es el archivo incluido por la librería actual de Adafruit.
+
 ## Flujo recomendado
 
 1. Cablear solo Arduino Nano + MCP23017.
@@ -36,4 +38,3 @@ El firmware usa:
 4. Cablear un canal de motor y probarlo.
 5. Replicar los 12 canales.
 6. Cargar `arduino/ReflektorMotorController/ReflektorMotorController.ino`.
-
