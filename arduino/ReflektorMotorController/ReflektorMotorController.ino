@@ -6,7 +6,7 @@
 
   Hardware:
   - Arduino Nano clásico ATmega328P, 5 V.
-  - MCP23017 en I2C, dirección 0x20: A0, A1 y A2 a GND.
+  - Modulo MCP23017 en I2C, normalmente en direccion 0x20.
   - SDA MCP23017 -> A4 Arduino Nano.
   - SCL MCP23017 -> A5 Arduino Nano.
   - Cada salida MCP23017 controla la gate de un MOSFET N-channel logic-level.
@@ -131,7 +131,7 @@ void setup() {
 
   if (!mcp.begin_I2C(MCP23017_ADDRESS)) {
     Serial.println(F("ERROR: MCP23017 no detectado en 0x20."));
-    Serial.println(F("Revisar SDA=A4, SCL=A5, VCC=5V, GND comun, RESET y A0/A1/A2 a GND."));
+    Serial.println(F("Revisar SDA=A4, SCL=A5, VCC=5V, GND comun y direccion real con el escaner I2C."));
 
     // No continuar si no existe el expansor: evita estados inesperados.
     while (true) {
@@ -156,4 +156,3 @@ void loop() {
       apagarTodos();
   */
 }
-

@@ -9,7 +9,9 @@ Con esta lógica:
 - GPIO del MCP23017 en `HIGH` -> gate alta -> MOSFET conduce -> motor encendido.
 - GPIO del MCP23017 en `LOW` -> gate baja por pull-down -> MOSFET cortado -> motor apagado.
 
-## Conexiones I²C
+## Conexiones I²C principales
+
+Con un módulo MCP23017 típico, la prueba inicial puede hacerse con 4 cables:
 
 | Señal | Arduino Nano ATmega328P | MCP23017 |
 |---|---:|---:|
@@ -17,14 +19,14 @@ Con esta lógica:
 | SCL | A5 | SCL |
 | 5 V lógica | 5V | VCC |
 | Tierra común | GND | GND |
-| Dirección | - | A0, A1, A2 a GND -> `0x20` |
-| Reset MCP23017 | 5V, preferible con pull-up 10 kΩ | RESET |
 
 Notas:
 
 - En Arduino Nano clásico, SDA es A4 y SCL es A5.
 - Todas las tierras deben estar unidas: Arduino, MCP23017 y fuente externa de motores.
-- Si el módulo MCP23017 no trae pull-ups I²C, añadir pull-ups de 4,7 kΩ desde SDA a 5 V y desde SCL a 5 V.
+- Muchos módulos ya traen pull-ups I²C, dirección por defecto y RESET resuelto en la placa.
+- Si usas un chip MCP23017 suelto, no dejes flotantes los pines de dirección ni RESET. En ese caso sí hay que fijarlos externamente.
+- Si el escáner I²C no detecta nada, comprobar si tu módulo necesita pull-ups de 4,7 kΩ desde SDA a 5 V y desde SCL a 5 V.
 
 ## Esquema de un canal de motor
 
@@ -93,8 +95,8 @@ Componentes principales:
 
 Recomendado:
 
-- 1 × resistencia 10 kΩ pull-up para RESET del MCP23017 si el módulo no la integra.
-- 2 × resistencias 4,7 kΩ pull-up I²C si el módulo no las integra.
+- 1 × resistencia 10 kΩ pull-up para RESET del MCP23017 solo si el módulo no la integra.
+- 2 × resistencias 4,7 kΩ pull-up I²C solo si el módulo no las integra.
 - Fusible o limitación de corriente en la fuente de motores.
 
 ## Dimensionado de corriente
@@ -113,10 +115,9 @@ La corriente de arranque de micromotores DC puede ser varias veces la nominal. L
 
 - SDA/SCL invertidos.
 - En Nano clásico, SDA debe ir a A4 y SCL a A5.
-- A0/A1/A2 no están todos a GND y la dirección no es `0x20`.
+- La dirección real del módulo no coincide con la usada en el código. Usar el escáner I²C.
 - Falta GND común.
-- RESET del MCP23017 está flotante o bajo.
-- Faltan pull-ups I²C.
+- En chip suelto o módulos incompletos: RESET flotante/bajo, dirección flotante o falta de pull-ups I²C.
 
 ### Motores no giran
 
@@ -158,4 +159,3 @@ El MCP23017 no tiene generadores PWM hardware. Sus pines son GPIO digitales cont
 - posibles parpadeos o ruido audible en motores.
 
 Para ON/OFF independiente es adecuado. Para PWM real en 12 motores, conviene usar drivers o controladores con PWM hardware, o microcontroladores con suficientes temporizadores/salidas PWM.
-

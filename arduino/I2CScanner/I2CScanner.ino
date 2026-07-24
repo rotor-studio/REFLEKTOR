@@ -9,7 +9,7 @@
   - GND comun
   - MCP23017 VCC -> 5 V
 
-  Si A0, A1 y A2 del MCP23017 estan a GND, la direccion esperada es 0x20.
+  En muchos modulos MCP23017, la direccion por defecto detectada sera 0x20.
 */
 
 void setup() {
@@ -59,4 +59,3 @@ void loop() {
   Serial.println();
   delay(5000);
 }
-
