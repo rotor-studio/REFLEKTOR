@@ -50,3 +50,5 @@ En el sketch principal, abrir el Monitor Serial a `115200` baudios y enviar coma
 - `status`: muestra el estado guardado de los 12 motores.
 - `test`: repite la secuencia de prueba.
 - `help`: muestra los comandos disponibles.
+
+El código también procesa comandos si el Monitor Serial está configurado como `No line ending`, usando un pequeño timeout tras recibir caracteres. Aun así, para depurar es más claro usar `Newline`.

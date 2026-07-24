@@ -28,6 +28,7 @@ const uint8_t MCP23017_ADDRESS = 0x20;
 const uint8_t MOTOR_COUNT = 12;
 const unsigned long TEST_ON_TIME_MS = 500;
 const uint8_t SERIAL_BUFFER_SIZE = 32;
+const unsigned long SERIAL_COMMAND_TIMEOUT_MS = 250;
 
 // motorPins[0] corresponde al motor 1.
 // 0-7 = GPA0-GPA7, 8-11 = GPB0-GPB3.
@@ -49,6 +50,7 @@ const uint8_t motorPins[MOTOR_COUNT] = {
 bool motorEncendido[MOTOR_COUNT] = {false};
 char serialBuffer[SERIAL_BUFFER_SIZE];
 uint8_t serialBufferIndex = 0;
+unsigned long ultimoCaracterSerialMs = 0;
 
 bool motorValido(uint8_t numeroMotor) {
   return numeroMotor >= 1 && numeroMotor <= MOTOR_COUNT;
@@ -232,15 +234,18 @@ void procesarComandoSerial(char *comando) {
 void leerSerial() {
   while (Serial.available() > 0) {
     char c = (char)Serial.read();
+    ultimoCaracterSerialMs = millis();
 
     if (c == '\r') {
       continue;
     }
 
-    if (c == '\n') {
-      serialBuffer[serialBufferIndex] = '\0';
-      procesarComandoSerial(serialBuffer);
-      serialBufferIndex = 0;
+    if (c == '\n' || c == ',') {
+      if (serialBufferIndex > 0) {
+        serialBuffer[serialBufferIndex] = '\0';
+        procesarComandoSerial(serialBuffer);
+        serialBufferIndex = 0;
+      }
       return;
     }
 
@@ -251,6 +256,16 @@ void leerSerial() {
       serialBufferIndex = 0;
       Serial.println(F("Comando demasiado largo. Buffer reiniciado."));
     }
+  }
+
+  /*
+    Algunos monitores serie pueden estar configurados como "No line ending".
+    En ese caso procesamos el comando cuando dejan de llegar caracteres.
+  */
+  if (serialBufferIndex > 0 && millis() - ultimoCaracterSerialMs > SERIAL_COMMAND_TIMEOUT_MS) {
+    serialBuffer[serialBufferIndex] = '\0';
+    procesarComandoSerial(serialBuffer);
+    serialBufferIndex = 0;
   }
 }
 
