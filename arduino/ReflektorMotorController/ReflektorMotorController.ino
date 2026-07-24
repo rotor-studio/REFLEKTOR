@@ -1,5 +1,7 @@
 #include <Wire.h>
 #include <Adafruit_MCP23X17.h>
+#include <stdlib.h>
+#include <string.h>
 
 /*
   REFLEKTOR - Control ON/OFF de 12 micromotores DC
@@ -25,6 +27,7 @@ Adafruit_MCP23X17 mcp;
 const uint8_t MCP23017_ADDRESS = 0x20;
 const uint8_t MOTOR_COUNT = 12;
 const unsigned long TEST_ON_TIME_MS = 500;
+const uint8_t SERIAL_BUFFER_SIZE = 32;
 
 // motorPins[0] corresponde al motor 1.
 // 0-7 = GPA0-GPA7, 8-11 = GPB0-GPB3.
@@ -43,6 +46,10 @@ const uint8_t motorPins[MOTOR_COUNT] = {
   11  // Motor 12 -> GPB3
 };
 
+bool motorEncendido[MOTOR_COUNT] = {false};
+char serialBuffer[SERIAL_BUFFER_SIZE];
+uint8_t serialBufferIndex = 0;
+
 bool motorValido(uint8_t numeroMotor) {
   return numeroMotor >= 1 && numeroMotor <= MOTOR_COUNT;
 }
@@ -59,6 +66,10 @@ bool encenderMotor(uint8_t numeroMotor) {
   }
 
   mcp.digitalWrite(pinDeMotor(numeroMotor), HIGH);
+  motorEncendido[numeroMotor - 1] = true;
+  Serial.print(F("Motor "));
+  Serial.print(numeroMotor);
+  Serial.println(F(" ON"));
   return true;
 }
 
@@ -70,13 +81,19 @@ bool apagarMotor(uint8_t numeroMotor) {
   }
 
   mcp.digitalWrite(pinDeMotor(numeroMotor), LOW);
+  motorEncendido[numeroMotor - 1] = false;
+  Serial.print(F("Motor "));
+  Serial.print(numeroMotor);
+  Serial.println(F(" OFF"));
   return true;
 }
 
 void apagarTodos() {
   for (uint8_t motor = 1; motor <= MOTOR_COUNT; motor++) {
     mcp.digitalWrite(pinDeMotor(motor), LOW);
+    motorEncendido[motor - 1] = false;
   }
+  Serial.println(F("Todos los motores OFF"));
 }
 
 void encenderGrupo(const uint8_t lista[], uint8_t cantidad) {
@@ -97,6 +114,143 @@ void configurarSalidasSeguras() {
   for (uint8_t i = 0; i < MOTOR_COUNT; i++) {
     mcp.pinMode(motorPins[i], OUTPUT);
     mcp.digitalWrite(motorPins[i], LOW);
+    motorEncendido[i] = false;
+  }
+}
+
+bool alternarMotor(uint8_t numeroMotor) {
+  if (!motorValido(numeroMotor)) {
+    Serial.print(F("Motor fuera de rango: "));
+    Serial.println(numeroMotor);
+    return false;
+  }
+
+  if (motorEncendido[numeroMotor - 1]) {
+    return apagarMotor(numeroMotor);
+  }
+
+  return encenderMotor(numeroMotor);
+}
+
+void imprimirAyudaSerial() {
+  Serial.println(F("Comandos Serial:"));
+  Serial.println(F("  1..12      -> alternar motor ON/OFF"));
+  Serial.println(F("  on N       -> encender motor N"));
+  Serial.println(F("  off N      -> apagar motor N"));
+  Serial.println(F("  alloff     -> apagar todos"));
+  Serial.println(F("  status     -> mostrar estado"));
+  Serial.println(F("  test       -> ejecutar secuencia de prueba"));
+  Serial.println(F("  help       -> mostrar esta ayuda"));
+}
+
+void imprimirEstadoMotores() {
+  Serial.println(F("Estado motores:"));
+  for (uint8_t motor = 1; motor <= MOTOR_COUNT; motor++) {
+    Serial.print(F("  Motor "));
+    Serial.print(motor);
+    Serial.print(F(": "));
+    Serial.println(motorEncendido[motor - 1] ? F("ON") : F("OFF"));
+  }
+}
+
+uint8_t leerNumeroMotor(const char *texto) {
+  int numero = atoi(texto);
+
+  if (numero < 1 || numero > MOTOR_COUNT) {
+    return 0;
+  }
+
+  return (uint8_t)numero;
+}
+
+void procesarComandoSerial(char *comando) {
+  while (*comando == ' ' || *comando == '\t') {
+    comando++;
+  }
+
+  if (*comando == '\0') {
+    return;
+  }
+
+  for (char *p = comando; *p != '\0'; p++) {
+    if (*p >= 'A' && *p <= 'Z') {
+      *p = *p + ('a' - 'A');
+    }
+  }
+
+  uint8_t motor = leerNumeroMotor(comando);
+  if (motor != 0) {
+    alternarMotor(motor);
+    return;
+  }
+
+  if (strncmp(comando, "on ", 3) == 0) {
+    motor = leerNumeroMotor(comando + 3);
+    if (motor != 0) {
+      encenderMotor(motor);
+    } else {
+      Serial.println(F("Uso: on N, con N entre 1 y 12"));
+    }
+    return;
+  }
+
+  if (strncmp(comando, "off ", 4) == 0) {
+    motor = leerNumeroMotor(comando + 4);
+    if (motor != 0) {
+      apagarMotor(motor);
+    } else {
+      Serial.println(F("Uso: off N, con N entre 1 y 12"));
+    }
+    return;
+  }
+
+  if (strcmp(comando, "alloff") == 0 || strcmp(comando, "off") == 0) {
+    apagarTodos();
+    return;
+  }
+
+  if (strcmp(comando, "status") == 0) {
+    imprimirEstadoMotores();
+    return;
+  }
+
+  if (strcmp(comando, "test") == 0) {
+    ejecutarSecuenciaPrueba();
+    return;
+  }
+
+  if (strcmp(comando, "help") == 0 || strcmp(comando, "?") == 0) {
+    imprimirAyudaSerial();
+    return;
+  }
+
+  Serial.print(F("Comando no reconocido: "));
+  Serial.println(comando);
+  Serial.println(F("Escribe help para ver comandos disponibles."));
+}
+
+void leerSerial() {
+  while (Serial.available() > 0) {
+    char c = (char)Serial.read();
+
+    if (c == '\r') {
+      continue;
+    }
+
+    if (c == '\n') {
+      serialBuffer[serialBufferIndex] = '\0';
+      procesarComandoSerial(serialBuffer);
+      serialBufferIndex = 0;
+      return;
+    }
+
+    if (serialBufferIndex < SERIAL_BUFFER_SIZE - 1) {
+      serialBuffer[serialBufferIndex] = c;
+      serialBufferIndex++;
+    } else {
+      serialBufferIndex = 0;
+      Serial.println(F("Comando demasiado largo. Buffer reiniciado."));
+    }
   }
 }
 
@@ -143,16 +297,9 @@ void setup() {
 
   configurarSalidasSeguras();
   ejecutarSecuenciaPrueba();
+  imprimirAyudaSerial();
 }
 
 void loop() {
-  /*
-    Preparado para futuras secuencias.
-
-    Ejemplo:
-      uint8_t grupo[] = {1, 4, 9};
-      encenderGrupo(grupo, 3);
-      delay(1000);
-      apagarTodos();
-  */
+  leerSerial();
 }

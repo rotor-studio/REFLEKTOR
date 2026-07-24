@@ -38,3 +38,15 @@ Nota: en el Library Manager hay que buscar `Adafruit MCP23017`, no `Adafruit_MCP
 4. Cablear un canal de motor y probarlo.
 5. Replicar los 12 canales.
 6. Cargar `arduino/ReflektorMotorController/ReflektorMotorController.ino`.
+
+## Control por Monitor Serial
+
+En el sketch principal, abrir el Monitor Serial a `115200` baudios y enviar comandos terminados en nueva línea:
+
+- `1` a `12`: alterna el motor indicado entre ON/OFF.
+- `on 3`: enciende el motor 3.
+- `off 3`: apaga el motor 3.
+- `alloff`: apaga todos los motores.
+- `status`: muestra el estado guardado de los 12 motores.
+- `test`: repite la secuencia de prueba.
+- `help`: muestra los comandos disponibles.
