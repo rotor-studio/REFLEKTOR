@@ -27,6 +27,10 @@ Adafruit_MCP23X17 mcp;
 const uint8_t MCP23017_ADDRESS = 0x20;
 const uint8_t MOTOR_COUNT = 12;
 const unsigned long TEST_ON_TIME_MS = 500;
+const uint8_t RANDOM_DEFAULT_STEPS = 20;
+const uint8_t RANDOM_MAX_STEPS = 200;
+const unsigned long RANDOM_ON_TIME_MS = 250;
+const unsigned long RANDOM_PAUSE_TIME_MS = 100;
 const uint8_t SERIAL_BUFFER_SIZE = 32;
 const unsigned long SERIAL_COMMAND_TIMEOUT_MS = 250;
 
@@ -144,6 +148,8 @@ void imprimirAyudaSerial() {
   Serial.println(F("  pinon N    -> poner pin MCP23017 N en HIGH"));
   Serial.println(F("  pinoff N   -> poner pin MCP23017 N en LOW"));
   Serial.println(F("  map        -> mostrar mapa motor -> pin"));
+  Serial.println(F("  random     -> activar 20 motores aleatorios"));
+  Serial.println(F("  random N   -> activar N motores aleatorios"));
   Serial.println(F("  status     -> mostrar estado"));
   Serial.println(F("  test       -> ejecutar secuencia de prueba"));
   Serial.println(F("  help       -> mostrar esta ayuda"));
@@ -200,6 +206,20 @@ int leerNumeroPinMcp(const char *texto) {
   return numero;
 }
 
+uint8_t leerCantidadRandom(const char *texto) {
+  int cantidad = atoi(texto);
+
+  if (cantidad < 1) {
+    return RANDOM_DEFAULT_STEPS;
+  }
+
+  if (cantidad > RANDOM_MAX_STEPS) {
+    return RANDOM_MAX_STEPS;
+  }
+
+  return (uint8_t)cantidad;
+}
+
 void escribirPinMcp(uint8_t pin, bool estado) {
   mcp.pinMode(pin, OUTPUT);
   mcp.digitalWrite(pin, estado ? HIGH : LOW);
@@ -222,6 +242,34 @@ void escribirPinMcp(uint8_t pin, bool estado) {
 void alternarPinMcp(uint8_t pin) {
   bool estadoActual = mcp.digitalRead(pin) == HIGH;
   escribirPinMcp(pin, !estadoActual);
+}
+
+void ejecutarSecuenciaRandom(uint8_t pasos) {
+  Serial.print(F("Secuencia random: "));
+  Serial.print(pasos);
+  Serial.println(F(" activaciones."));
+
+  apagarTodos();
+  delay(100);
+
+  for (uint8_t i = 0; i < pasos; i++) {
+    uint8_t motor = (uint8_t)random(1, MOTOR_COUNT + 1);
+
+    Serial.print(F("Random "));
+    Serial.print(i + 1);
+    Serial.print(F("/"));
+    Serial.print(pasos);
+    Serial.print(F(": motor "));
+    Serial.println(motor);
+
+    encenderMotor(motor);
+    delay(RANDOM_ON_TIME_MS);
+    apagarMotor(motor);
+    delay(RANDOM_PAUSE_TIME_MS);
+  }
+
+  apagarTodos();
+  Serial.println(F("Secuencia random finalizada."));
 }
 
 void procesarComandoSerial(char *comando) {
@@ -297,6 +345,21 @@ void procesarComandoSerial(char *comando) {
 
   if (strcmp(comando, "map") == 0) {
     imprimirMapaMotores();
+    return;
+  }
+
+  if (strcmp(comando, "random") == 0 || strcmp(comando, "rand") == 0) {
+    ejecutarSecuenciaRandom(RANDOM_DEFAULT_STEPS);
+    return;
+  }
+
+  if (strncmp(comando, "random ", 7) == 0) {
+    ejecutarSecuenciaRandom(leerCantidadRandom(comando + 7));
+    return;
+  }
+
+  if (strncmp(comando, "rand ", 5) == 0) {
+    ejecutarSecuenciaRandom(leerCantidadRandom(comando + 5));
     return;
   }
 
@@ -389,6 +452,8 @@ void setup() {
 
   Serial.println(F("REFLEKTOR - Controlador 12 motores MCP23017"));
   Serial.println(F("Arduino Nano: SDA=A4, SCL=A5"));
+
+  randomSeed(micros() ^ analogRead(A0));
 
   Wire.begin();
 

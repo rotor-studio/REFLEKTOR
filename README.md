@@ -51,6 +51,8 @@ En el sketch principal, abrir el Monitor Serial a `115200` baudios y enviar coma
 - `pinon 11`: pone directamente `B3` en HIGH.
 - `pinoff 11`: pone directamente `B3` en LOW.
 - `map`: muestra el mapa motor -> pin MCP23017.
+- `random`: ejecuta 20 activaciones aleatorias, una por vez.
+- `random 50`: ejecuta 50 activaciones aleatorias, una por vez.
 - `status`: muestra el estado guardado de los 12 motores.
 - `test`: repite la secuencia de prueba.
 - `help`: muestra los comandos disponibles.
