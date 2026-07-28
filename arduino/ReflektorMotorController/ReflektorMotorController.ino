@@ -140,6 +140,10 @@ void imprimirAyudaSerial() {
   Serial.println(F("  on N       -> encender motor N"));
   Serial.println(F("  off N      -> apagar motor N"));
   Serial.println(F("  alloff     -> apagar todos"));
+  Serial.println(F("  pin N      -> alternar pin MCP23017 N, 0..15"));
+  Serial.println(F("  pinon N    -> poner pin MCP23017 N en HIGH"));
+  Serial.println(F("  pinoff N   -> poner pin MCP23017 N en LOW"));
+  Serial.println(F("  map        -> mostrar mapa motor -> pin"));
   Serial.println(F("  status     -> mostrar estado"));
   Serial.println(F("  test       -> ejecutar secuencia de prueba"));
   Serial.println(F("  help       -> mostrar esta ayuda"));
@@ -155,6 +159,27 @@ void imprimirEstadoMotores() {
   }
 }
 
+void imprimirMapaMotores() {
+  Serial.println(F("Mapa motor -> pin MCP23017:"));
+  for (uint8_t motor = 1; motor <= MOTOR_COUNT; motor++) {
+    uint8_t pin = pinDeMotor(motor);
+
+    Serial.print(F("  Motor "));
+    Serial.print(motor);
+    Serial.print(F(" -> pin "));
+    Serial.print(pin);
+    Serial.print(F(" -> "));
+
+    if (pin < 8) {
+      Serial.print(F("A"));
+      Serial.println(pin);
+    } else {
+      Serial.print(F("B"));
+      Serial.println(pin - 8);
+    }
+  }
+}
+
 uint8_t leerNumeroMotor(const char *texto) {
   int numero = atoi(texto);
 
@@ -163,6 +188,40 @@ uint8_t leerNumeroMotor(const char *texto) {
   }
 
   return (uint8_t)numero;
+}
+
+int leerNumeroPinMcp(const char *texto) {
+  int numero = atoi(texto);
+
+  if (numero < 0 || numero > 15) {
+    return -1;
+  }
+
+  return numero;
+}
+
+void escribirPinMcp(uint8_t pin, bool estado) {
+  mcp.pinMode(pin, OUTPUT);
+  mcp.digitalWrite(pin, estado ? HIGH : LOW);
+
+  Serial.print(F("Pin MCP23017 "));
+  Serial.print(pin);
+  Serial.print(F(" "));
+
+  if (pin < 8) {
+    Serial.print(F("A"));
+    Serial.print(pin);
+  } else {
+    Serial.print(F("B"));
+    Serial.print(pin - 8);
+  }
+
+  Serial.println(estado ? F(" HIGH") : F(" LOW"));
+}
+
+void alternarPinMcp(uint8_t pin) {
+  bool estadoActual = mcp.digitalRead(pin) == HIGH;
+  escribirPinMcp(pin, !estadoActual);
 }
 
 void procesarComandoSerial(char *comando) {
@@ -203,6 +262,41 @@ void procesarComandoSerial(char *comando) {
     } else {
       Serial.println(F("Uso: off N, con N entre 1 y 12"));
     }
+    return;
+  }
+
+  if (strncmp(comando, "pinon ", 6) == 0) {
+    int pin = leerNumeroPinMcp(comando + 6);
+    if (pin >= 0) {
+      escribirPinMcp((uint8_t)pin, true);
+    } else {
+      Serial.println(F("Uso: pinon N, con N entre 0 y 15"));
+    }
+    return;
+  }
+
+  if (strncmp(comando, "pinoff ", 7) == 0) {
+    int pin = leerNumeroPinMcp(comando + 7);
+    if (pin >= 0) {
+      escribirPinMcp((uint8_t)pin, false);
+    } else {
+      Serial.println(F("Uso: pinoff N, con N entre 0 y 15"));
+    }
+    return;
+  }
+
+  if (strncmp(comando, "pin ", 4) == 0) {
+    int pin = leerNumeroPinMcp(comando + 4);
+    if (pin >= 0) {
+      alternarPinMcp((uint8_t)pin);
+    } else {
+      Serial.println(F("Uso: pin N, con N entre 0 y 15"));
+    }
+    return;
+  }
+
+  if (strcmp(comando, "map") == 0) {
+    imprimirMapaMotores();
     return;
   }
 
