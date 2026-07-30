@@ -30,6 +30,7 @@ from serial.tools import list_ports
 MOTOR_COUNT = 12
 VIDEO_WIDTH = 960
 VIDEO_HEIGHT = 540
+ACTIVE_CELL_ALPHA = 0.35
 
 
 @dataclass(frozen=True)
@@ -229,6 +230,34 @@ def draw_grid(frame, rows: int, cols: int, mask: str, face: Rect | None) -> None
     height, width = frame.shape[:2]
     cell_w = width / cols
     cell_h = height / rows
+    overlay = frame.copy()
+
+    for row in range(rows):
+        for col in range(cols):
+            motor = zigzag_motor_for_cell(row, col, cols)
+            x1 = int(round(col * cell_w))
+            y1 = int(round(row * cell_h))
+            x2 = int(round((col + 1) * cell_w))
+            y2 = int(round((row + 1) * cell_h))
+            active = 1 <= motor <= MOTOR_COUNT and mask[motor - 1] == "1"
+            color = (0, 255, 0) if active else (80, 80, 80)
+
+            if active:
+                cv2.rectangle(overlay, (x1, y1), (x2, y2), (0, 255, 0), -1)
+
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            cv2.putText(
+                frame,
+                str(motor),
+                (x1 + 10, y1 + 28),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.8,
+                color,
+                2,
+                cv2.LINE_AA,
+            )
+
+    cv2.addWeighted(overlay, ACTIVE_CELL_ALPHA, frame, 1 - ACTIVE_CELL_ALPHA, 0, frame)
 
     for row in range(rows):
         for col in range(cols):
@@ -285,7 +314,9 @@ class ReflektorApp:
         self.running = False
         self.last_mask = ""
         self.last_send_time = 0.0
+        self.frame_count = 0
         self.photo: ImageTk.PhotoImage | None = None
+        self.canvas_image_id: int | None = None
 
         cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         self.face_cascade = cv2.CascadeClassifier(cascade_path)
@@ -338,8 +369,14 @@ class ReflektorApp:
         self.stop_button = ttk.Button(top, text="Stop", command=self.stop, state=tk.DISABLED)
         self.stop_button.pack(side=tk.LEFT)
 
-        self.video_label = ttk.Label(self.root, anchor=tk.CENTER)
-        self.video_label.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 8))
+        self.video_canvas = tk.Canvas(
+            self.root,
+            width=VIDEO_WIDTH,
+            height=VIDEO_HEIGHT,
+            bg="#202020",
+            highlightthickness=0,
+        )
+        self.video_canvas.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 8))
 
         bottom = ttk.Frame(self.root, padding=(10, 0, 10, 10))
         bottom.pack(fill=tk.X)
@@ -386,7 +423,16 @@ class ReflektorApp:
         rgb = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
         image = Image.fromarray(rgb)
         self.photo = ImageTk.PhotoImage(image=image)
-        self.video_label.configure(image=self.photo)
+        canvas_width = max(1, self.video_canvas.winfo_width())
+        canvas_height = max(1, self.video_canvas.winfo_height())
+        x = canvas_width // 2
+        y = canvas_height // 2
+
+        if self.canvas_image_id is None:
+            self.canvas_image_id = self.video_canvas.create_image(x, y, image=self.photo, anchor=tk.CENTER)
+        else:
+            self.video_canvas.itemconfigure(self.canvas_image_id, image=self.photo)
+            self.video_canvas.coords(self.canvas_image_id, x, y)
 
     def selected_camera_index(self) -> int:
         option = self.camera_by_label[self.selected_camera_label.get()]
@@ -418,6 +464,7 @@ class ReflektorApp:
         self.running = True
         self.last_mask = ""
         self.last_send_time = 0.0
+        self.frame_count = 0
         self.serial_buffer_reset_done = False
 
         if not self.args.dry_run:
@@ -525,6 +572,12 @@ class ReflektorApp:
 
         draw_grid(frame, self.args.rows, self.args.cols, mask, face)
         self.mask_value.set(f"mask {mask}")
+        self.frame_count += 1
+        active_motors = [str(i + 1) for i, bit in enumerate(mask) if bit == "1"]
+        active_text = ", ".join(active_motors) if active_motors else "ninguno"
+        self.status_value.set(
+            f"Frames: {self.frame_count}. Motores activos: {active_text}."
+        )
 
         self.show_frame(frame)
 
