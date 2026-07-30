@@ -31,6 +31,7 @@ MOTOR_COUNT = 12
 VIDEO_WIDTH = 960
 VIDEO_HEIGHT = 540
 ACTIVE_CELL_ALPHA = 0.35
+BLACK_FRAME_MEAN_THRESHOLD = 2.0
 
 
 @dataclass(frozen=True)
@@ -296,6 +297,21 @@ def draw_grid(frame, rows: int, cols: int, mask: str, face: Rect | None) -> None
         (10, height - 16),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.7,
+        (255, 255, 255),
+        2,
+        cv2.LINE_AA,
+    )
+
+
+def draw_warning(frame, text: str) -> None:
+    height, width = frame.shape[:2]
+    cv2.rectangle(frame, (20, 20), (width - 20, 86), (0, 0, 180), -1)
+    cv2.putText(
+        frame,
+        text,
+        (36, 62),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.75,
         (255, 255, 255),
         2,
         cv2.LINE_AA,
@@ -571,12 +587,16 @@ class ReflektorApp:
             self.last_send_time = now
 
         draw_grid(frame, self.args.rows, self.args.cols, mask, face)
+        frame_mean = float(frame.mean())
+        if frame_mean < BLACK_FRAME_MEAN_THRESHOLD:
+            draw_warning(frame, "La camara devuelve imagen negra. Prueba otra camara o revisa permisos/tapa.")
+
         self.mask_value.set(f"mask {mask}")
         self.frame_count += 1
         active_motors = [str(i + 1) for i, bit in enumerate(mask) if bit == "1"]
         active_text = ", ".join(active_motors) if active_motors else "ninguno"
         self.status_value.set(
-            f"Frames: {self.frame_count}. Motores activos: {active_text}."
+            f"Frames: {self.frame_count}. Brillo medio: {frame_mean:.1f}. Motores activos: {active_text}."
         )
 
         self.show_frame(frame)
