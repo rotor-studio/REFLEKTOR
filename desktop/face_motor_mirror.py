@@ -23,9 +23,10 @@ import sys
 import time
 from dataclasses import dataclass
 from typing import Iterable
+import tkinter as tk
+from tkinter import ttk
 
 import cv2
-import numpy as np
 import serial
 from serial.tools import list_ports
 
@@ -137,47 +138,6 @@ def discover_cameras(max_cameras: int) -> list[int]:
     return cameras
 
 
-def draw_camera_selector(cameras: list[int]) -> None:
-    canvas = np.full((420, 760, 3), 255, dtype=np.uint8)
-    cv2.putText(
-        canvas,
-        "REFLEKTOR - seleccion de camara",
-        (30, 50),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.9,
-        (20, 20, 20),
-        2,
-        cv2.LINE_AA,
-    )
-    cv2.putText(
-        canvas,
-        "Pulsa el numero de la camara. Enter usa la primera. q cancela.",
-        (30, 95),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.55,
-        (20, 20, 20),
-        1,
-        cv2.LINE_AA,
-    )
-
-    y = 150
-    for camera_index in cameras:
-        text = f"{camera_index}: camara OpenCV {camera_index}"
-        cv2.putText(
-            canvas,
-            text,
-            (60, y),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.8,
-            (0, 80, 180),
-            2,
-            cv2.LINE_AA,
-        )
-        y += 42
-
-    cv2.imshow("REFLEKTOR camera selector", canvas)
-
-
 def select_camera_interactively(max_cameras: int) -> int | None:
     print(f"Buscando camaras 0..{max_cameras - 1}...")
     cameras = discover_cameras(max_cameras)
@@ -188,30 +148,47 @@ def select_camera_interactively(max_cameras: int) -> int | None:
 
     print("Camaras encontradas: " + ", ".join(str(index) for index in cameras))
 
-    if len(cameras) == 1:
-        print(f"Usando unica camara disponible: {cameras[0]}")
-        return cameras[0]
+    selected_camera: int | None = None
 
-    while True:
-        draw_camera_selector(cameras)
-        key = cv2.waitKey(100) & 0xFF
+    root = tk.Tk()
+    root.title("REFLEKTOR - seleccionar camara")
+    root.geometry("420x210")
+    root.resizable(False, False)
 
-        if key == 255:
-            continue
+    tk.Label(
+        root,
+        text="Selecciona la camara para la prueba REFLEKTOR",
+        font=("Segoe UI", 11),
+    ).pack(pady=(18, 8))
 
-        if key == ord("q") or key == 27:
-            cv2.destroyWindow("REFLEKTOR camera selector")
-            return None
+    camera_values = [str(index) for index in cameras]
+    selected_value = tk.StringVar(value=camera_values[0])
 
-        if key == 10 or key == 13:
-            cv2.destroyWindow("REFLEKTOR camera selector")
-            return cameras[0]
+    combo = ttk.Combobox(root, values=camera_values, textvariable=selected_value, state="readonly")
+    combo.pack(pady=8)
+    combo.focus_set()
 
-        if ord("0") <= key <= ord("9"):
-            selected = key - ord("0")
-            if selected in cameras:
-                cv2.destroyWindow("REFLEKTOR camera selector")
-                return selected
+    info = "Camaras detectadas: " + ", ".join(camera_values)
+    tk.Label(root, text=info, font=("Segoe UI", 9)).pack(pady=(4, 12))
+
+    def accept() -> None:
+        nonlocal selected_camera
+        selected_camera = int(selected_value.get())
+        root.destroy()
+
+    def cancel() -> None:
+        root.destroy()
+
+    button_frame = tk.Frame(root)
+    button_frame.pack(pady=8)
+    ttk.Button(button_frame, text="Usar camara", command=accept).pack(side=tk.LEFT, padx=8)
+    ttk.Button(button_frame, text="Cancelar", command=cancel).pack(side=tk.LEFT, padx=8)
+
+    root.bind("<Return>", lambda _event: accept())
+    root.bind("<Escape>", lambda _event: cancel())
+    root.mainloop()
+
+    return selected_camera
 
 
 def zigzag_motor_for_cell(row: int, col: int, cols: int) -> int:

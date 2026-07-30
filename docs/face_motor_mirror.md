@@ -62,7 +62,7 @@ Sustituir `COM3` por el puerto real:
 python desktop\face_motor_mirror.py --port COM3
 ```
 
-Si hay más de una cámara, la app muestra una ventana de selección. Pulsa el número de la cámara que quieres usar.
+Si no indicas `--camera`, la app muestra una ventana de selección con las cámaras detectadas.
 
 Salir con `q` o `Esc` en la ventana de vídeo. Al salir, el script envía `mask 000000000000`.
 
