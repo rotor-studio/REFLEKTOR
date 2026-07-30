@@ -112,41 +112,11 @@ def list_serial_ports() -> None:
 
 
 def open_camera(index: int) -> cv2.VideoCapture:
-    if sys.platform.startswith("win"):
-        return cv2.VideoCapture(index, cv2.CAP_DSHOW)
     return cv2.VideoCapture(index)
 
 
-def camera_available(index: int) -> bool:
-    camera = open_camera(index)
-    if not camera.isOpened():
-        camera.release()
-        return False
-
-    ok, _ = camera.read()
-    camera.release()
-    return bool(ok)
-
-
-def discover_cameras(max_cameras: int) -> list[int]:
-    cameras: list[int] = []
-
-    for index in range(max(0, max_cameras)):
-        if camera_available(index):
-            cameras.append(index)
-
-    return cameras
-
-
 def select_camera_interactively(max_cameras: int) -> int | None:
-    print(f"Buscando camaras 0..{max_cameras - 1}...")
-    cameras = discover_cameras(max_cameras)
-
-    if not cameras:
-        print("No se encontraron camaras disponibles.", file=sys.stderr)
-        return None
-
-    print("Camaras encontradas: " + ", ".join(str(index) for index in cameras))
+    camera_values = [str(index) for index in range(max(1, max_cameras))]
 
     selected_camera: int | None = None
 
@@ -161,14 +131,13 @@ def select_camera_interactively(max_cameras: int) -> int | None:
         font=("Segoe UI", 11),
     ).pack(pady=(18, 8))
 
-    camera_values = [str(index) for index in cameras]
     selected_value = tk.StringVar(value=camera_values[0])
 
     combo = ttk.Combobox(root, values=camera_values, textvariable=selected_value, state="readonly")
     combo.pack(pady=8)
     combo.focus_set()
 
-    info = "Camaras detectadas: " + ", ".join(camera_values)
+    info = "Prueba primero 0. Si no es la correcta, cierra y elige otro indice."
     tk.Label(root, text=info, font=("Segoe UI", 9)).pack(pady=(4, 12))
 
     def accept() -> None:
