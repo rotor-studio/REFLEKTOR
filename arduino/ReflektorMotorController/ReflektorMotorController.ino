@@ -102,6 +102,14 @@ void apagarTodos() {
   Serial.println(F("Todos los motores OFF"));
 }
 
+void encenderTodos() {
+  for (uint8_t motor = 1; motor <= MOTOR_COUNT; motor++) {
+    mcp.digitalWrite(pinDeMotor(motor), HIGH);
+    motorEncendido[motor - 1] = true;
+  }
+  Serial.println(F("Todos los motores ON"));
+}
+
 void encenderGrupo(const uint8_t lista[], uint8_t cantidad) {
   for (uint8_t i = 0; i < cantidad; i++) {
     encenderMotor(lista[i]);
@@ -143,6 +151,7 @@ void imprimirAyudaSerial() {
   Serial.println(F("  1..12      -> alternar motor ON/OFF"));
   Serial.println(F("  on N       -> encender motor N"));
   Serial.println(F("  off N      -> apagar motor N"));
+  Serial.println(F("  allon      -> encender todos"));
   Serial.println(F("  alloff     -> apagar todos"));
   Serial.println(F("  pin N      -> alternar pin MCP23017 N, 0..15"));
   Serial.println(F("  pinon N    -> poner pin MCP23017 N en HIGH"));
@@ -360,6 +369,11 @@ void procesarComandoSerial(char *comando) {
 
   if (strncmp(comando, "rand ", 5) == 0) {
     ejecutarSecuenciaRandom(leerCantidadRandom(comando + 5));
+    return;
+  }
+
+  if (strcmp(comando, "allon") == 0 || strcmp(comando, "on") == 0) {
+    encenderTodos();
     return;
   }
 

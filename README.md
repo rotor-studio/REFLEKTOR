@@ -46,6 +46,7 @@ En el sketch principal, abrir el Monitor Serial a `115200` baudios y enviar coma
 - `1` a `12`: alterna el motor indicado entre ON/OFF.
 - `on 3`: enciende el motor 3.
 - `off 3`: apaga el motor 3.
+- `allon`: enciende todos los motores.
 - `alloff`: apaga todos los motores.
 - `pin 11`: alterna directamente el pin lógico 11 del MCP23017, equivalente a `B3`.
 - `pinon 11`: pone directamente `B3` en HIGH.
