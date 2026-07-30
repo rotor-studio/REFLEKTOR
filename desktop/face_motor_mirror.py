@@ -21,6 +21,7 @@ from tkinter import messagebox, ttk
 from typing import Iterable
 
 import cv2
+import numpy as np
 from PIL import Image, ImageTk
 import serial
 from serial.tools import list_ports
@@ -162,7 +163,10 @@ def build_camera_options(max_cameras: int) -> list[CameraOption]:
 
 
 def open_camera(index: int) -> cv2.VideoCapture:
-    return cv2.VideoCapture(index)
+    camera = cv2.VideoCapture(index)
+    camera.set(cv2.CAP_PROP_FRAME_WIDTH, VIDEO_WIDTH)
+    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, VIDEO_HEIGHT)
+    return camera
 
 
 def zigzag_motor_for_cell(row: int, col: int, cols: int) -> int:
@@ -305,6 +309,7 @@ class ReflektorApp:
         self.mask_value = tk.StringVar(value="mask 000000000000")
 
         self.build_ui()
+        self.show_placeholder("Selecciona camara y pulsa Start.")
 
     def build_ui(self) -> None:
         self.root.geometry("1100x760")
@@ -327,7 +332,7 @@ class ReflektorApp:
         self.port_entry = ttk.Entry(top, textvariable=self.port_value, width=10)
         self.port_entry.pack(side=tk.LEFT, padx=(0, 12))
 
-        self.start_button = ttk.Button(top, text="Start", command=self.start)
+        self.start_button = ttk.Button(top, text="Start video + motores", command=self.start)
         self.start_button.pack(side=tk.LEFT, padx=(0, 6))
 
         self.stop_button = ttk.Button(top, text="Stop", command=self.stop, state=tk.DISABLED)
@@ -348,6 +353,41 @@ class ReflektorApp:
         )
         ttk.Label(bottom, text=help_text).pack(anchor=tk.W)
 
+    def show_placeholder(self, text: str) -> None:
+        frame = self.placeholder_frame(text)
+        self.show_frame(frame)
+
+    def placeholder_frame(self, text: str):
+        frame = np.full((VIDEO_HEIGHT, VIDEO_WIDTH, 3), 30, dtype=np.uint8)
+        cv2.putText(
+            frame,
+            text,
+            (40, VIDEO_HEIGHT // 2),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1.0,
+            (230, 230, 230),
+            2,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            frame,
+            "La rejilla aparece sobre el video cuando la camara entrega frames.",
+            (40, VIDEO_HEIGHT // 2 + 45),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.65,
+            (180, 180, 180),
+            1,
+            cv2.LINE_AA,
+        )
+        return frame
+
+    def show_frame(self, frame) -> None:
+        display_frame = cv2.resize(frame, (VIDEO_WIDTH, VIDEO_HEIGHT), interpolation=cv2.INTER_AREA)
+        rgb = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
+        image = Image.fromarray(rgb)
+        self.photo = ImageTk.PhotoImage(image=image)
+        self.video_label.configure(image=self.photo)
+
     def selected_camera_index(self) -> int:
         option = self.camera_by_label[self.selected_camera_label.get()]
         return option.index
@@ -361,6 +401,17 @@ class ReflektorApp:
         if not camera.isOpened():
             camera.release()
             messagebox.showerror("Camara", f"No se pudo abrir la camara {camera_index}.")
+            self.show_placeholder(f"No se pudo abrir la camara {camera_index}.")
+            return
+
+        ok, first_frame = camera.read()
+        if not ok:
+            camera.release()
+            messagebox.showerror(
+                "Camara",
+                f"La camara {camera_index} se abre, pero no entrega imagen.",
+            )
+            self.show_placeholder(f"Camara {camera_index} sin frames. Prueba otro indice.")
             return
 
         self.camera = camera
@@ -392,6 +443,9 @@ class ReflektorApp:
         self.stop_button.configure(state=tk.NORMAL)
         self.camera_combo.configure(state=tk.DISABLED)
         self.port_entry.configure(state=tk.DISABLED)
+        if not self.args.no_mirror:
+            first_frame = cv2.flip(first_frame, 1)
+        self.show_frame(first_frame)
         self.update_frame()
 
     def stop(self, send_zero: bool = True) -> None:
@@ -414,6 +468,7 @@ class ReflektorApp:
         self.port_entry.configure(state=tk.NORMAL)
         self.mask_value.set("mask 000000000000")
         self.status_value.set("Parado.")
+        self.show_placeholder("Parado. Selecciona camara y pulsa Start.")
 
     def send_mask(self, mask: str) -> None:
         command = f"mask {mask}\n"
@@ -442,7 +497,9 @@ class ReflektorApp:
 
         ok, frame = self.camera.read()
         if not ok:
-            self.status_value.set("Error leyendo camara.")
+            camera_index = self.selected_camera_index()
+            self.status_value.set(f"Camara {camera_index} abierta, pero sin frames.")
+            self.show_placeholder(f"Camara {camera_index} sin frames. Prueba otro indice.")
             self.root.after(100, self.update_frame)
             return
 
@@ -469,11 +526,7 @@ class ReflektorApp:
         draw_grid(frame, self.args.rows, self.args.cols, mask, face)
         self.mask_value.set(f"mask {mask}")
 
-        display_frame = cv2.resize(frame, (VIDEO_WIDTH, VIDEO_HEIGHT), interpolation=cv2.INTER_AREA)
-        rgb = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
-        image = Image.fromarray(rgb)
-        self.photo = ImageTk.PhotoImage(image=image)
-        self.video_label.configure(image=self.photo)
+        self.show_frame(frame)
 
         self.root.after(15, self.update_frame)
 
