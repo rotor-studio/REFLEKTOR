@@ -1,6 +1,6 @@
 # Prueba de espejo con cámara y 12 motores
 
-Esta prueba abre una cámara, detecta la cara y divide la imagen en 12 celdas. Las celdas cubiertas por la cara se envían al Arduino como una máscara Serial.
+Esta prueba abre una única ventana con selector de cámara, vista de vídeo, detección de cara y estado Serial. Divide la imagen en 12 celdas. Las celdas cubiertas por la cara se envían al Arduino como una máscara Serial.
 
 ## Mapeo zigzag por defecto
 
@@ -62,9 +62,11 @@ Sustituir `COM3` por el puerto real:
 python desktop\face_motor_mirror.py --port COM3
 ```
 
-Si no indicas `--camera`, la app muestra una ventana de selección con las cámaras detectadas.
+La app muestra en la parte superior un selector de cámara. En Windows intenta mostrar el nombre del dispositivo junto al índice OpenCV, por ejemplo `0 - Integrated Camera`.
 
-Salir con `q` o `Esc` en la ventana de vídeo. Al salir, el script envía `mask 000000000000`.
+El índice sigue siendo necesario porque OpenCV abre cámaras por número. Si Windows devuelve los nombres en otro orden, prueba otro índice desde el mismo selector.
+
+Pulsa `Start` para abrir la cámara seleccionada. Pulsa `Stop` o cierra la ventana para enviar `mask 000000000000`.
 
 El script espera 10 segundos al abrir el puerto Serial porque el Arduino Nano normalmente se resetea al abrir el puerto y ejecuta la secuencia inicial del firmware. Si desactivas esa secuencia en el futuro, puedes reducirlo:
 
@@ -90,7 +92,7 @@ Desactiva el espejo horizontal de cámara.
 python desktop\face_motor_mirror.py --port COM3 --camera 1
 ```
 
-Arranca directamente con la cámara `1`, sin mostrar selector.
+Preselecciona la cámara `1` al abrir la ventana.
 
 ```powershell
 python desktop\face_motor_mirror.py --dry-run

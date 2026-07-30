@@ -1,37 +1,34 @@
 """
 REFLEKTOR - Face motor mirror
 
-Abre una camara, detecta una cara con OpenCV, divide la imagen en una matriz
-de 12 celdas en zigzag y envia una mascara Serial al firmware Arduino:
-
-    mask 100000000001
-
-Mapeo por defecto, 4 columnas x 3 filas:
-
-    fila 0: motor  1,  2,  3,  4
-    fila 1: motor  8,  7,  6,  5
-    fila 2: motor  9, 10, 11, 12
-
-Uso:
-    python desktop/face_motor_mirror.py --port COM3
+Una sola ventana:
+- selector de camara con nombre;
+- vista de video;
+- deteccion de cara;
+- cuadricula zigzag de 12 motores;
+- envio Serial al firmware Arduino con comandos "mask 000000000000".
 """
 
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 import time
-from dataclasses import dataclass
-from typing import Iterable
 import tkinter as tk
-from tkinter import ttk
+from dataclasses import dataclass
+from tkinter import messagebox, ttk
+from typing import Iterable
 
 import cv2
+from PIL import Image, ImageTk
 import serial
 from serial.tools import list_ports
 
 
 MOTOR_COUNT = 12
+VIDEO_WIDTH = 960
+VIDEO_HEIGHT = 540
 
 
 @dataclass(frozen=True)
@@ -46,28 +43,34 @@ class Rect:
         return max(0, self.w) * max(0, self.h)
 
 
+@dataclass(frozen=True)
+class CameraOption:
+    index: int
+    name: str
+
+    @property
+    def label(self) -> str:
+        return f"{self.index} - {self.name}"
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Detecta cara y controla 12 motores por Serial en formato zigzag."
     )
-    parser.add_argument("--port", help="Puerto Serial del Arduino, por ejemplo COM3.")
+    parser.add_argument("--port", help="Puerto Serial del Arduino, por ejemplo COM7.")
     parser.add_argument("--baud", type=int, default=115200, help="Baudios Serial.")
-    parser.add_argument(
-        "--camera",
-        type=int,
-        help="Indice de camara OpenCV. Si se omite, la app muestra un selector.",
-    )
+    parser.add_argument("--camera", type=int, help="Indice de camara OpenCV inicial.")
     parser.add_argument(
         "--max-cameras",
         type=int,
         default=10,
-        help="Cantidad de indices de camara a probar en el selector, empezando en 0.",
+        help="Cantidad de indices de camara a mostrar, empezando en 0.",
     )
     parser.add_argument(
         "--startup-delay",
         type=float,
         default=10.0,
-        help="Espera tras abrir Serial. El Nano suele resetearse al abrir el puerto.",
+        help="Espera logica tras abrir Serial. El Nano suele resetearse al abrir el puerto.",
     )
     parser.add_argument("--cols", type=int, default=4, help="Columnas de la matriz.")
     parser.add_argument("--rows", type=int, default=3, help="Filas de la matriz.")
@@ -91,7 +94,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="No abre Serial; solo muestra la mascara en consola.",
+        help="No abre Serial; solo imprime mascara en consola.",
     )
     parser.add_argument(
         "--list-ports",
@@ -111,53 +114,55 @@ def list_serial_ports() -> None:
         print(f"{port.device}: {port.description}")
 
 
+def get_windows_camera_names() -> list[str]:
+    if not sys.platform.startswith("win"):
+        return []
+
+    command = [
+        "powershell",
+        "-NoProfile",
+        "-Command",
+        (
+            "Get-CimInstance Win32_PnPEntity | "
+            "Where-Object { "
+            "$_.PNPClass -eq 'Camera' -or "
+            "$_.PNPClass -eq 'Image' -or "
+            "$_.Name -match 'Camera|Camara|Webcam|Video' "
+            "} | Select-Object -ExpandProperty Name"
+        ),
+    ]
+
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except Exception:
+        return []
+
+    names = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    return list(dict.fromkeys(names))
+
+
+def build_camera_options(max_cameras: int) -> list[CameraOption]:
+    names = get_windows_camera_names()
+    options: list[CameraOption] = []
+
+    for index in range(max(1, max_cameras)):
+        if index < len(names):
+            name = names[index]
+        else:
+            name = f"Camara OpenCV {index}"
+        options.append(CameraOption(index=index, name=name))
+
+    return options
+
+
 def open_camera(index: int) -> cv2.VideoCapture:
     return cv2.VideoCapture(index)
-
-
-def select_camera_interactively(max_cameras: int) -> int | None:
-    camera_values = [str(index) for index in range(max(1, max_cameras))]
-
-    selected_camera: int | None = None
-
-    root = tk.Tk()
-    root.title("REFLEKTOR - seleccionar camara")
-    root.geometry("420x210")
-    root.resizable(False, False)
-
-    tk.Label(
-        root,
-        text="Selecciona la camara para la prueba REFLEKTOR",
-        font=("Segoe UI", 11),
-    ).pack(pady=(18, 8))
-
-    selected_value = tk.StringVar(value=camera_values[0])
-
-    combo = ttk.Combobox(root, values=camera_values, textvariable=selected_value, state="readonly")
-    combo.pack(pady=8)
-    combo.focus_set()
-
-    info = "Prueba primero 0. Si no es la correcta, cierra y elige otro indice."
-    tk.Label(root, text=info, font=("Segoe UI", 9)).pack(pady=(4, 12))
-
-    def accept() -> None:
-        nonlocal selected_camera
-        selected_camera = int(selected_value.get())
-        root.destroy()
-
-    def cancel() -> None:
-        root.destroy()
-
-    button_frame = tk.Frame(root)
-    button_frame.pack(pady=8)
-    ttk.Button(button_frame, text="Usar camara", command=accept).pack(side=tk.LEFT, padx=8)
-    ttk.Button(button_frame, text="Cancelar", command=cancel).pack(side=tk.LEFT, padx=8)
-
-    root.bind("<Return>", lambda _event: accept())
-    root.bind("<Escape>", lambda _event: cancel())
-    root.mainloop()
-
-    return selected_camera
 
 
 def zigzag_motor_for_cell(row: int, col: int, cols: int) -> int:
@@ -264,23 +269,217 @@ def draw_grid(frame, rows: int, cols: int, mask: str, face: Rect | None) -> None
     )
 
 
-def open_serial(port: str, baud: int, startup_delay: float) -> serial.Serial:
-    arduino = serial.Serial(port=port, baudrate=baud, timeout=0.1, write_timeout=0.2)
-    time.sleep(startup_delay)
-    arduino.reset_input_buffer()
-    return arduino
+class ReflektorApp:
+    def __init__(self, root: tk.Tk, args: argparse.Namespace) -> None:
+        self.root = root
+        self.args = args
+        self.camera_options = build_camera_options(args.max_cameras)
+        self.camera: cv2.VideoCapture | None = None
+        self.arduino: serial.Serial | None = None
+        self.serial_ready_at = 0.0
+        self.serial_buffer_reset_done = False
+        self.running = False
+        self.last_mask = ""
+        self.last_send_time = 0.0
+        self.photo: ImageTk.PhotoImage | None = None
 
+        cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        self.face_cascade = cv2.CascadeClassifier(cascade_path)
+        if self.face_cascade.empty():
+            raise RuntimeError(f"No se pudo cargar el detector Haar: {cascade_path}")
 
-def send_mask(arduino: serial.Serial | None, mask: str, dry_run: bool) -> None:
-    command = f"mask {mask}\n"
-    if dry_run:
-        print(command.strip())
-        return
+        self.root.title("REFLEKTOR - Face Motor Mirror")
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
-    if arduino is None:
-        return
+        self.camera_by_label = {option.label: option for option in self.camera_options}
+        initial_option = self.camera_options[0]
+        if args.camera is not None:
+            for option in self.camera_options:
+                if option.index == args.camera:
+                    initial_option = option
+                    break
 
-    arduino.write(command.encode("ascii"))
+        self.selected_camera_label = tk.StringVar(value=initial_option.label)
+        self.port_value = tk.StringVar(value=args.port or "COM7")
+        self.status_value = tk.StringVar(value="Selecciona camara y pulsa Start.")
+        self.mask_value = tk.StringVar(value="mask 000000000000")
+
+        self.build_ui()
+
+    def build_ui(self) -> None:
+        self.root.geometry("1100x760")
+        self.root.minsize(900, 650)
+
+        top = ttk.Frame(self.root, padding=10)
+        top.pack(fill=tk.X)
+
+        ttk.Label(top, text="Camara").pack(side=tk.LEFT, padx=(0, 6))
+        self.camera_combo = ttk.Combobox(
+            top,
+            values=[option.label for option in self.camera_options],
+            textvariable=self.selected_camera_label,
+            state="readonly",
+            width=42,
+        )
+        self.camera_combo.pack(side=tk.LEFT, padx=(0, 12))
+
+        ttk.Label(top, text="Serial").pack(side=tk.LEFT, padx=(0, 6))
+        self.port_entry = ttk.Entry(top, textvariable=self.port_value, width=10)
+        self.port_entry.pack(side=tk.LEFT, padx=(0, 12))
+
+        self.start_button = ttk.Button(top, text="Start", command=self.start)
+        self.start_button.pack(side=tk.LEFT, padx=(0, 6))
+
+        self.stop_button = ttk.Button(top, text="Stop", command=self.stop, state=tk.DISABLED)
+        self.stop_button.pack(side=tk.LEFT)
+
+        self.video_label = ttk.Label(self.root, anchor=tk.CENTER)
+        self.video_label.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 8))
+
+        bottom = ttk.Frame(self.root, padding=(10, 0, 10, 10))
+        bottom.pack(fill=tk.X)
+
+        ttk.Label(bottom, textvariable=self.mask_value).pack(anchor=tk.W)
+        ttk.Label(bottom, textvariable=self.status_value).pack(anchor=tk.W)
+
+        help_text = (
+            "Mapeo zigzag: 1 2 3 4 / 8 7 6 5 / 9 10 11 12. "
+            "Cierra la ventana o pulsa Stop para enviar mask 000000000000."
+        )
+        ttk.Label(bottom, text=help_text).pack(anchor=tk.W)
+
+    def selected_camera_index(self) -> int:
+        option = self.camera_by_label[self.selected_camera_label.get()]
+        return option.index
+
+    def start(self) -> None:
+        if self.running:
+            return
+
+        camera_index = self.selected_camera_index()
+        camera = open_camera(camera_index)
+        if not camera.isOpened():
+            camera.release()
+            messagebox.showerror("Camara", f"No se pudo abrir la camara {camera_index}.")
+            return
+
+        self.camera = camera
+        self.running = True
+        self.last_mask = ""
+        self.last_send_time = 0.0
+        self.serial_buffer_reset_done = False
+
+        if not self.args.dry_run:
+            try:
+                self.arduino = serial.Serial(
+                    port=self.port_value.get(),
+                    baudrate=self.args.baud,
+                    timeout=0.1,
+                    write_timeout=0.2,
+                )
+                self.serial_ready_at = time.monotonic() + self.args.startup_delay
+                self.status_value.set(
+                    f"Camara {camera_index} activa. Serial abierto; esperando reset Arduino."
+                )
+            except serial.SerialException as exc:
+                self.stop(send_zero=False)
+                messagebox.showerror("Serial", f"No se pudo abrir {self.port_value.get()}: {exc}")
+                return
+        else:
+            self.status_value.set(f"Camara {camera_index} activa. Dry-run sin Serial.")
+
+        self.start_button.configure(state=tk.DISABLED)
+        self.stop_button.configure(state=tk.NORMAL)
+        self.camera_combo.configure(state=tk.DISABLED)
+        self.port_entry.configure(state=tk.DISABLED)
+        self.update_frame()
+
+    def stop(self, send_zero: bool = True) -> None:
+        if send_zero:
+            self.send_mask("0" * MOTOR_COUNT)
+
+        self.running = False
+
+        if self.camera is not None:
+            self.camera.release()
+            self.camera = None
+
+        if self.arduino is not None:
+            self.arduino.close()
+            self.arduino = None
+
+        self.start_button.configure(state=tk.NORMAL)
+        self.stop_button.configure(state=tk.DISABLED)
+        self.camera_combo.configure(state="readonly")
+        self.port_entry.configure(state=tk.NORMAL)
+        self.mask_value.set("mask 000000000000")
+        self.status_value.set("Parado.")
+
+    def send_mask(self, mask: str) -> None:
+        command = f"mask {mask}\n"
+
+        if self.args.dry_run:
+            print(command.strip())
+            return
+
+        if self.arduino is None:
+            return
+
+        now = time.monotonic()
+        if now < self.serial_ready_at:
+            return
+
+        if not self.serial_buffer_reset_done:
+            self.arduino.reset_input_buffer()
+            self.serial_buffer_reset_done = True
+            self.status_value.set("Serial listo. Enviando mascaras.")
+
+        self.arduino.write(command.encode("ascii"))
+
+    def update_frame(self) -> None:
+        if not self.running or self.camera is None:
+            return
+
+        ok, frame = self.camera.read()
+        if not ok:
+            self.status_value.set("Error leyendo camara.")
+            self.root.after(100, self.update_frame)
+            return
+
+        if not self.args.no_mirror:
+            frame = cv2.flip(frame, 1)
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = self.face_cascade.detectMultiScale(
+            gray,
+            scaleFactor=1.1,
+            minNeighbors=5,
+            minSize=(60, 60),
+        )
+        face = largest_face(faces)
+        height, width = frame.shape[:2]
+        mask = mask_from_face(width, height, face, self.args.rows, self.args.cols, self.args.coverage)
+
+        now = time.monotonic()
+        if mask != self.last_mask and now - self.last_send_time >= self.args.send_interval:
+            self.send_mask(mask)
+            self.last_mask = mask
+            self.last_send_time = now
+
+        draw_grid(frame, self.args.rows, self.args.cols, mask, face)
+        self.mask_value.set(f"mask {mask}")
+
+        display_frame = cv2.resize(frame, (VIDEO_WIDTH, VIDEO_HEIGHT), interpolation=cv2.INTER_AREA)
+        rgb = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
+        image = Image.fromarray(rgb)
+        self.photo = ImageTk.PhotoImage(image=image)
+        self.video_label.configure(image=self.photo)
+
+        self.root.after(15, self.update_frame)
+
+    def on_close(self) -> None:
+        self.stop(send_zero=True)
+        self.root.destroy()
 
 
 def main() -> int:
@@ -298,74 +497,15 @@ def main() -> int:
         print("Error: indica --port COMx o usa --list-ports.", file=sys.stderr)
         return 2
 
-    cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-    face_cascade = cv2.CascadeClassifier(cascade_path)
-    if face_cascade.empty():
-        print(f"Error: no se pudo cargar el detector Haar: {cascade_path}", file=sys.stderr)
-        return 1
-
-    camera_index = args.camera
-    if camera_index is None:
-        camera_index = select_camera_interactively(args.max_cameras)
-        if camera_index is None:
-            return 1
-
-    camera = open_camera(camera_index)
-    if not camera.isOpened():
-        print(f"Error: no se pudo abrir la camara {camera_index}.", file=sys.stderr)
-        return 1
-
-    arduino = None
-    if not args.dry_run:
-        arduino = open_serial(args.port, args.baud, args.startup_delay)
-        print(f"Serial abierto: {args.port} @ {args.baud}")
-
-    last_mask = ""
-    last_send_time = 0.0
-
-    print("Pulsa q en la ventana de video para salir.")
-
+    root = tk.Tk()
     try:
-        while True:
-            ok, frame = camera.read()
-            if not ok:
-                print("Error: no se pudo leer frame de camara.", file=sys.stderr)
-                return 1
+        app = ReflektorApp(root, args)
+    except RuntimeError as exc:
+        messagebox.showerror("REFLEKTOR", str(exc))
+        return 1
 
-            if not args.no_mirror:
-                frame = cv2.flip(frame, 1)
-
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            faces = face_cascade.detectMultiScale(
-                gray,
-                scaleFactor=1.1,
-                minNeighbors=5,
-                minSize=(60, 60),
-            )
-            face = largest_face(faces)
-            height, width = frame.shape[:2]
-            mask = mask_from_face(width, height, face, args.rows, args.cols, args.coverage)
-
-            now = time.monotonic()
-            if mask != last_mask and now - last_send_time >= args.send_interval:
-                send_mask(arduino, mask, args.dry_run)
-                last_mask = mask
-                last_send_time = now
-
-            draw_grid(frame, args.rows, args.cols, mask, face)
-            cv2.imshow("REFLEKTOR face motor mirror", frame)
-
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord("q") or key == 27:
-                break
-
-    finally:
-        send_mask(arduino, "0" * MOTOR_COUNT, args.dry_run)
-        if arduino is not None:
-            arduino.close()
-        camera.release()
-        cv2.destroyAllWindows()
-
+    root.mainloop()
+    del app
     return 0
 
 

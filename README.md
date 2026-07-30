@@ -67,7 +67,7 @@ El código también procesa comandos si el Monitor Serial está configurado como
 
 Ver instrucciones completas en [docs/face_motor_mirror.md](docs/face_motor_mirror.md).
 
-Ejecutar sin `--camera` muestra un selector de cámara dentro de la app:
+La app usa una sola ventana con selector de cámara, vista de vídeo y estado Serial:
 
 ```powershell
 python desktop\face_motor_mirror.py --port COM7
