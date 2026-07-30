@@ -62,6 +62,8 @@ Sustituir `COM3` por el puerto real:
 python desktop\face_motor_mirror.py --port COM3
 ```
 
+Si hay más de una cámara, la app muestra una ventana de selección. Pulsa el número de la cámara que quieres usar.
+
 Salir con `q` o `Esc` en la ventana de vídeo. Al salir, el script envía `mask 000000000000`.
 
 El script espera 10 segundos al abrir el puerto Serial porque el Arduino Nano normalmente se resetea al abrir el puerto y ejecuta la secuencia inicial del firmware. Si desactivas esa secuencia en el futuro, puedes reducirlo:
@@ -83,6 +85,12 @@ python desktop\face_motor_mirror.py --port COM3 --no-mirror
 ```
 
 Desactiva el espejo horizontal de cámara.
+
+```powershell
+python desktop\face_motor_mirror.py --port COM3 --camera 1
+```
+
+Arranca directamente con la cámara `1`, sin mostrar selector.
 
 ```powershell
 python desktop\face_motor_mirror.py --dry-run

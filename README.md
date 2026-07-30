@@ -66,3 +66,9 @@ El código también procesa comandos si el Monitor Serial está configurado como
 ## Prueba cámara -> cara -> motores
 
 Ver instrucciones completas en [docs/face_motor_mirror.md](docs/face_motor_mirror.md).
+
+Ejecutar sin `--camera` muestra un selector de cámara dentro de la app:
+
+```powershell
+python desktop\face_motor_mirror.py --port COM7
+```

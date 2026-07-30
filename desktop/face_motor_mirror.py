@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 import cv2
+import numpy as np
 import serial
 from serial.tools import list_ports
 
@@ -50,7 +51,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--port", help="Puerto Serial del Arduino, por ejemplo COM3.")
     parser.add_argument("--baud", type=int, default=115200, help="Baudios Serial.")
-    parser.add_argument("--camera", type=int, default=0, help="Indice de camara OpenCV.")
+    parser.add_argument(
+        "--camera",
+        type=int,
+        help="Indice de camara OpenCV. Si se omite, la app muestra un selector.",
+    )
+    parser.add_argument(
+        "--max-cameras",
+        type=int,
+        default=10,
+        help="Cantidad de indices de camara a probar en el selector, empezando en 0.",
+    )
     parser.add_argument(
         "--startup-delay",
         type=float,
@@ -97,6 +108,110 @@ def list_serial_ports() -> None:
 
     for port in ports:
         print(f"{port.device}: {port.description}")
+
+
+def open_camera(index: int) -> cv2.VideoCapture:
+    if sys.platform.startswith("win"):
+        return cv2.VideoCapture(index, cv2.CAP_DSHOW)
+    return cv2.VideoCapture(index)
+
+
+def camera_available(index: int) -> bool:
+    camera = open_camera(index)
+    if not camera.isOpened():
+        camera.release()
+        return False
+
+    ok, _ = camera.read()
+    camera.release()
+    return bool(ok)
+
+
+def discover_cameras(max_cameras: int) -> list[int]:
+    cameras: list[int] = []
+
+    for index in range(max(0, max_cameras)):
+        if camera_available(index):
+            cameras.append(index)
+
+    return cameras
+
+
+def draw_camera_selector(cameras: list[int]) -> None:
+    canvas = np.full((420, 760, 3), 255, dtype=np.uint8)
+    cv2.putText(
+        canvas,
+        "REFLEKTOR - seleccion de camara",
+        (30, 50),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.9,
+        (20, 20, 20),
+        2,
+        cv2.LINE_AA,
+    )
+    cv2.putText(
+        canvas,
+        "Pulsa el numero de la camara. Enter usa la primera. q cancela.",
+        (30, 95),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.55,
+        (20, 20, 20),
+        1,
+        cv2.LINE_AA,
+    )
+
+    y = 150
+    for camera_index in cameras:
+        text = f"{camera_index}: camara OpenCV {camera_index}"
+        cv2.putText(
+            canvas,
+            text,
+            (60, y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (0, 80, 180),
+            2,
+            cv2.LINE_AA,
+        )
+        y += 42
+
+    cv2.imshow("REFLEKTOR camera selector", canvas)
+
+
+def select_camera_interactively(max_cameras: int) -> int | None:
+    print(f"Buscando camaras 0..{max_cameras - 1}...")
+    cameras = discover_cameras(max_cameras)
+
+    if not cameras:
+        print("No se encontraron camaras disponibles.", file=sys.stderr)
+        return None
+
+    print("Camaras encontradas: " + ", ".join(str(index) for index in cameras))
+
+    if len(cameras) == 1:
+        print(f"Usando unica camara disponible: {cameras[0]}")
+        return cameras[0]
+
+    while True:
+        draw_camera_selector(cameras)
+        key = cv2.waitKey(100) & 0xFF
+
+        if key == 255:
+            continue
+
+        if key == ord("q") or key == 27:
+            cv2.destroyWindow("REFLEKTOR camera selector")
+            return None
+
+        if key == 10 or key == 13:
+            cv2.destroyWindow("REFLEKTOR camera selector")
+            return cameras[0]
+
+        if ord("0") <= key <= ord("9"):
+            selected = key - ord("0")
+            if selected in cameras:
+                cv2.destroyWindow("REFLEKTOR camera selector")
+                return selected
 
 
 def zigzag_motor_for_cell(row: int, col: int, cols: int) -> int:
@@ -243,9 +358,15 @@ def main() -> int:
         print(f"Error: no se pudo cargar el detector Haar: {cascade_path}", file=sys.stderr)
         return 1
 
-    camera = cv2.VideoCapture(args.camera)
+    camera_index = args.camera
+    if camera_index is None:
+        camera_index = select_camera_interactively(args.max_cameras)
+        if camera_index is None:
+            return 1
+
+    camera = open_camera(camera_index)
     if not camera.isOpened():
-        print(f"Error: no se pudo abrir la camara {args.camera}.", file=sys.stderr)
+        print(f"Error: no se pudo abrir la camara {camera_index}.", file=sys.stderr)
         return 1
 
     arduino = None
