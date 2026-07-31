@@ -1,11 +1,11 @@
 """
-REFLEKTOR - Camera selector prototype
+REFLEKTOR - camera selector
 
-App minima:
-- tema oscuro;
-- desplegable con nombres de camaras;
-- preview de la camara seleccionada;
-- sin comunicacion con motores.
+App minima y oscura:
+- selector de camara con nombre;
+- selector de backend;
+- boton abrir/cerrar;
+- preview.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ TEXT = "#e8e8e8"
 MUTED = "#9a9a9a"
 ERROR = "#ff5c7a"
 BLACK_FRAME_THRESHOLD = 2.0
-WARMUP_FRAMES = 20
+WARMUP_FRAMES = 12
 
 
 @dataclass(frozen=True)
@@ -38,29 +38,29 @@ class BackendOption:
     api_preference: int | None
 
 
-def build_backend_options() -> list[BackendOption]:
-    if sys.platform.startswith("win"):
-        return [
-            BackendOption("DirectShow (recomendado)", cv2.CAP_DSHOW),
-            BackendOption("MSMF / Windows Media", cv2.CAP_MSMF),
-            BackendOption("OpenCV default", None),
-        ]
-
-    return [BackendOption("OpenCV default", None)]
-
-
 @dataclass(frozen=True)
 class CameraOption:
     index: int
     name: str
+    status: str = "no probado"
 
     @property
     def label(self) -> str:
-        return f"{self.index} — {self.name}"
+        return f"{self.index} - {self.name} [{self.status}]"
+
+
+def build_backend_options() -> list[BackendOption]:
+    if sys.platform.startswith("win"):
+        return [
+            BackendOption("DirectShow", cv2.CAP_DSHOW),
+            BackendOption("MSMF", cv2.CAP_MSMF),
+            BackendOption("default", None),
+        ]
+
+    return [BackendOption("default", None)]
 
 
 def get_windows_camera_names() -> list[str]:
-    """Best-effort camera names from Windows device manager."""
     if not sys.platform.startswith("win"):
         return []
 
@@ -130,6 +130,27 @@ def read_warm_frame(capture: cv2.VideoCapture, attempts: int = WARMUP_FRAMES):
     return last_ok and last_frame is not None, last_frame
 
 
+def probe_camera_index(index: int, backend: BackendOption, names: list[str]) -> CameraOption:
+    name = names[index] if index < len(names) else f"Camara OpenCV {index}"
+    capture = open_camera(index, backend)
+
+    if not capture.isOpened():
+        capture.release()
+        return CameraOption(index=index, name=name, status="no abre")
+
+    ok, frame = read_warm_frame(capture, attempts=8)
+    capture.release()
+
+    if not ok or frame is None:
+        return CameraOption(index=index, name=name, status="sin frame")
+
+    mean = float(frame.mean())
+    if mean <= BLACK_FRAME_THRESHOLD:
+        return CameraOption(index=index, name=name, status="negra")
+
+    return CameraOption(index=index, name=name, status=f"OK brillo {mean:.0f}")
+
+
 class CameraSelectorApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
@@ -145,7 +166,7 @@ class CameraSelectorApp:
         self.backend_by_label = {option.label: option for option in self.backend_options}
         self.selected_camera = tk.StringVar(value=self.camera_options[0].label)
         self.selected_backend = tk.StringVar(value=self.backend_options[0].label)
-        self.status = tk.StringVar(value="Selecciona una camara y pulsa Abrir camara.")
+        self.status = tk.StringVar(value="pulsa buscar")
 
         self.capture: cv2.VideoCapture | None = None
         self.running = False
@@ -154,13 +175,13 @@ class CameraSelectorApp:
 
         self.configure_style()
         self.build_ui()
-        self.draw_placeholder("Preview de camara")
+        self.draw_placeholder("sin camara")
 
     def configure_style(self) -> None:
         style = ttk.Style()
         style.theme_use("clam")
         style.configure("TFrame", background=BG)
-        style.configure("TLabel", background=BG, foreground=TEXT, font=("Segoe UI", 10))
+        style.configure("TLabel", background=BG, foreground=TEXT, font=("Segoe UI", 9))
         style.configure("Muted.TLabel", background=BG, foreground=MUTED, font=("Segoe UI", 9))
         style.configure(
             "TButton",
@@ -205,9 +226,12 @@ class CameraSelectorApp:
             textvariable=self.selected_backend,
             values=[option.label for option in self.backend_options],
             state="readonly",
-            width=22,
+            width=14,
         )
         self.backend_combo.pack(side=tk.LEFT, padx=(0, 6))
+
+        self.scan_button = ttk.Button(controls, text="buscar", command=self.scan_cameras)
+        self.scan_button.pack(side=tk.LEFT, padx=(0, 4))
 
         self.open_button = ttk.Button(controls, text="abrir", command=self.start_camera)
         self.open_button.pack(side=tk.LEFT, padx=(0, 4))
@@ -233,26 +257,50 @@ class CameraSelectorApp:
     def selected_backend_option(self) -> BackendOption:
         return self.backend_by_label[self.selected_backend.get()]
 
+    def refresh_camera_options(self, options: list[CameraOption]) -> None:
+        self.camera_options = options
+        self.camera_by_label = {option.label: option for option in options}
+        labels = [option.label for option in options]
+        self.combo.configure(values=labels)
+
+        best = next((option for option in options if option.status.startswith("OK")), options[0])
+        self.selected_camera.set(best.label)
+
+    def scan_cameras(self) -> None:
+        self.stop_camera()
+        backend = self.selected_backend_option()
+        names = get_windows_camera_names()
+        options: list[CameraOption] = []
+
+        for index in range(MAX_CAMERA_INDICES):
+            self.status.set(f"probando {index}")
+            self.root.update_idletasks()
+            options.append(probe_camera_index(index, backend, names))
+
+        self.refresh_camera_options(options)
+        ok_indices = [str(option.index) for option in options if option.status.startswith("OK")]
+        self.status.set("OK: " + ", ".join(ok_indices) if ok_indices else "sin imagen")
+
     def start_camera(self) -> None:
         self.stop_camera()
 
         index = self.selected_index()
         backend = self.selected_backend_option()
-        self.status.set(f"Abriendo camara {index} con {backend.label}...")
+        self.status.set(f"abriendo {index} {backend.label}")
         self.root.update_idletasks()
 
         capture = open_camera(index, backend)
         if not capture.isOpened():
             capture.release()
-            self.status.set(f"No se pudo abrir la camara {index} con {backend.label}.")
-            self.draw_placeholder(f"No se pudo abrir camara {index}", color=ERROR)
+            self.status.set(f"no abre {index}")
+            self.draw_placeholder(f"no abre {index}", color=ERROR)
             return
 
         ok, frame = read_warm_frame(capture)
         if not ok or frame is None:
             capture.release()
-            self.status.set(f"La camara {index} abre, pero no entrega imagen.")
-            self.draw_placeholder(f"Camara {index} sin imagen", color=ERROR)
+            self.status.set(f"sin imagen {index}")
+            self.draw_placeholder(f"sin imagen {index}", color=ERROR)
             return
 
         self.capture = capture
@@ -261,13 +309,7 @@ class CameraSelectorApp:
         self.stop_button.configure(state=tk.NORMAL)
         self.combo.configure(state=tk.DISABLED)
         self.backend_combo.configure(state=tk.DISABLED)
-        mean = float(frame.mean())
-        if mean <= BLACK_FRAME_THRESHOLD:
-            self.status.set(
-                f"Camara activa, pero imagen negra. Prueba otro backend. Brillo medio: {mean:.1f}"
-            )
-        else:
-            self.status.set(f"Camara activa: {self.selected_camera.get()} | {backend.label}")
+        self.scan_button.configure(state=tk.DISABLED)
         self.show_frame(frame)
         self.update_preview()
 
@@ -281,6 +323,7 @@ class CameraSelectorApp:
         self.stop_button.configure(state=tk.DISABLED)
         self.combo.configure(state="readonly")
         self.backend_combo.configure(state="readonly")
+        self.scan_button.configure(state=tk.NORMAL)
 
     def update_preview(self) -> None:
         if not self.running or self.capture is None:
@@ -288,20 +331,13 @@ class CameraSelectorApp:
 
         ok, frame = self.capture.read()
         if not ok or frame is None:
-            self.status.set("No se pudo leer frame de la camara.")
-            self.draw_placeholder("Sin frame de camara", color=ERROR)
+            self.status.set("sin frame")
+            self.draw_placeholder("sin frame", color=ERROR)
             self.root.after(250, self.update_preview)
             return
 
         mean = float(frame.mean())
-        if mean <= BLACK_FRAME_THRESHOLD:
-            self.status.set(
-                f"Camara activa, pero imagen negra. Backend: {self.selected_backend.get()} | brillo: {mean:.1f}"
-            )
-        else:
-            self.status.set(
-                f"Camara activa: {self.selected_camera.get()} | {self.selected_backend.get()} | brillo: {mean:.1f}"
-            )
+        self.status.set(f"indice {self.selected_index()} | {self.selected_backend.get()} | brillo {mean:.1f}")
         self.show_frame(frame)
         self.root.after(15, self.update_preview)
 
