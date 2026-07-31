@@ -25,7 +25,6 @@ FRAME_DELAY_MS = 33
 SERIAL_BAUD = 115200
 GRID_ROWS = 4
 GRID_COLS = 3
-PINCH_THRESHOLD = 0.08
 MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
 MODEL_PATH = Path(__file__).resolve().parent / "models" / "hand_landmarker.task"
 FINGERTIPS = [
@@ -162,9 +161,7 @@ class App:
         self.photo: ImageTk.PhotoImage | None = None
         self.image_id: int | None = None
         self.hover_cell: tuple[int, int] | None = None
-        self.active_motor: int | None = None
-        self.gesture_cell: tuple[int, int] | None = None
-        self.gesture_point: tuple[int, int] | None = None
+        self.active_motors: set[int] = set()
         self.fingertips: list[tuple[str, int, int]] = []
 
         self.canvas.bind("<Motion>", self.on_mouse_move)
@@ -262,8 +259,7 @@ class App:
         result = self.hands.detect(mp_image)
 
         if not result.hand_landmarks:
-            self.update_gesture_cell(None)
-            self.gesture_point = None
+            self.update_active_motors(set())
             self.fingertips = []
             return
 
@@ -278,44 +274,24 @@ class App:
             for index, label in FINGERTIPS
         ]
 
-        thumb = landmarks[4]
-        middle = landmarks[12]
+        active_motors: set[int] = set()
+        for _label, x, y in self.fingertips:
+            row = min(GRID_ROWS - 1, max(0, int((y / frame_height) * GRID_ROWS)))
+            col = min(GRID_COLS - 1, max(0, int((x / frame_width) * GRID_COLS)))
+            active_motors.add(self.motor_for_cell(row, col))
 
-        dx = thumb.x - middle.x
-        dy = thumb.y - middle.y
-        distance = (dx * dx + dy * dy) ** 0.5
+        self.update_active_motors(active_motors)
 
-        if distance > PINCH_THRESHOLD:
-            self.update_gesture_cell(None)
-            self.gesture_point = None
+    def update_active_motors(self, new_active_motors: set[int]) -> None:
+        if new_active_motors == self.active_motors:
             return
 
-        gesture_x = int(((thumb.x + middle.x) * 0.5) * frame_width)
-        gesture_y = int(((thumb.y + middle.y) * 0.5) * frame_height)
-        self.gesture_point = (gesture_x, gesture_y)
+        for motor in sorted(self.active_motors - new_active_motors):
+            self.send_motor_state(motor, False)
+        for motor in sorted(new_active_motors - self.active_motors):
+            self.send_motor_state(motor, True)
 
-        row = min(GRID_ROWS - 1, max(0, int((gesture_y / frame_height) * GRID_ROWS)))
-        col = min(GRID_COLS - 1, max(0, int((gesture_x / frame_width) * GRID_COLS)))
-        self.update_gesture_cell((row, col))
-
-    def update_gesture_cell(self, cell: tuple[int, int] | None) -> None:
-        previous_motor = self.active_motor
-        self.gesture_cell = cell
-
-        current_motor = None
-        if cell is not None:
-            row, col = cell
-            current_motor = self.motor_for_cell(row, col)
-
-        if current_motor == previous_motor:
-            return
-
-        if previous_motor is not None:
-            self.send_motor_state(previous_motor, False)
-        if current_motor is not None:
-            self.send_motor_state(current_motor, True)
-
-        self.active_motor = current_motor
+        self.active_motors = set(new_active_motors)
 
     def show(self, frame) -> None:
         width = max(1, self.canvas.winfo_width())
@@ -335,7 +311,6 @@ class App:
             self.canvas.coords(self.image_id, x, y)
 
         self.draw_grid(width, height)
-        self.draw_gesture_pointer(width, height)
         self.draw_fingertips(width, height)
 
     def draw_grid(self, width: int, height: int) -> None:
@@ -350,8 +325,8 @@ class App:
                 y1 = row * cell_height
                 x2 = x1 + cell_width
                 y2 = y1 + cell_height
-                active = self.active_motor == motor
-                hovered = self.hover_cell == (row, col) or self.gesture_cell == (row, col)
+                active = motor in self.active_motors
+                hovered = self.hover_cell == (row, col)
 
                 if active:
                     self.canvas.create_rectangle(
@@ -413,33 +388,24 @@ class App:
         return row, col
 
     def on_mouse_move(self, event) -> None:
-        if self.gesture_cell is not None:
+        if self.fingertips:
             return
 
-        previous_motor = self.active_motor
         self.hover_cell = self.cell_from_position(event.x, event.y)
 
-        current_motor = None
+        active_motors: set[int] = set()
         if self.hover_cell is not None:
             row, col = self.hover_cell
-            current_motor = self.motor_for_cell(row, col)
+            active_motors.add(self.motor_for_cell(row, col))
 
-        if current_motor != previous_motor:
-            if previous_motor is not None:
-                self.send_motor_state(previous_motor, False)
-            if current_motor is not None:
-                self.send_motor_state(current_motor, True)
-            self.active_motor = current_motor
-
+        self.update_active_motors(active_motors)
         self.draw_grid(max(1, self.canvas.winfo_width()), max(1, self.canvas.winfo_height()))
 
     def on_mouse_leave(self, _event) -> None:
-        if self.gesture_cell is not None:
+        if self.fingertips:
             return
 
-        if self.active_motor is not None:
-            self.send_motor_state(self.active_motor, False)
-            self.active_motor = None
+        self.update_active_motors(set())
         self.hover_cell = None
         self.draw_grid(max(1, self.canvas.winfo_width()), max(1, self.canvas.winfo_height()))
 
@@ -448,26 +414,6 @@ class App:
         if self.serial_connection is not None:
             self.serial_connection.write(command.encode("ascii"))
         self.status.configure(text=f"motor {motor} {'on' if active else 'off'}")
-
-    def draw_gesture_pointer(self, width: int, height: int) -> None:
-        self.canvas.delete("gesture")
-        if self.gesture_point is None:
-            return
-
-        source_x, source_y = self.gesture_point
-        x = int((source_x / CAMERA_WIDTH) * width)
-        y = int((source_y / CAMERA_HEIGHT) * height)
-        radius = 10
-
-        self.canvas.create_oval(
-            x - radius,
-            y - radius,
-            x + radius,
-            y + radius,
-            outline="#ffcc00",
-            width=2,
-            tags="gesture",
-        )
 
     def draw_fingertips(self, width: int, height: int) -> None:
         self.canvas.delete("fingertip")

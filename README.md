@@ -63,9 +63,9 @@ El código también procesa comandos si el Monitor Serial está configurado como
 
 ## App de cámara
 
-App con selector de cámara, selector de puerto Serial, preview de vídeo y activación de celdas por gesto pulgar-corazón. Por defecto usa `2 - Microsoft LifeCam Studio`.
+App con selector de cámara, selector de puerto Serial, preview de vídeo y activación de celdas con las puntas de los dedos. Por defecto usa `2 - Microsoft LifeCam Studio`.
 
-Gesto: junta la punta del pulgar con la punta del dedo corazón. La celda bajo el punto medio del gesto se activa mientras mantengas el gesto; al soltarlo se apaga.
+Cada punta detectada —pulgar, índice, corazón, anular y meñique— activa la celda sobre la que cae. Si varias puntas caen en celdas distintas, se pueden activar varios motores a la vez.
 
 ```powershell
 cd "D:\CODE CODEX\REFLEKTOR"
