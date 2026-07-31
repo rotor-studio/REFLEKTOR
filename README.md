@@ -63,8 +63,7 @@ El código también procesa comandos si el Monitor Serial está configurado como
 
 ## App de cámara
 
-Primera versión mínima: selector oscuro de cámara con nombres y preview.
-En Windows permite elegir backend de captura; si aparece un error `cap_msmf`, usar `DirectShow (recomendado)`.
+Versión mínima: abre directamente `Microsoft LifeCam Studio` en índice OpenCV `2` y muestra preview.
 
 ```powershell
 cd "D:\CODE CODEX\REFLEKTOR"
