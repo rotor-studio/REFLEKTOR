@@ -64,6 +64,7 @@ El código también procesa comandos si el Monitor Serial está configurado como
 ## App de cámara
 
 Primera versión mínima: selector oscuro de cámara con nombres y preview.
+En Windows permite elegir backend de captura; si aparece un error `cap_msmf`, usar `DirectShow (recomendado)`.
 
 ```powershell
 cd "D:\CODE CODEX\REFLEKTOR"
