@@ -18,6 +18,8 @@ CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 360
 FRAME_DELAY_MS = 33
 SERIAL_BAUD = 115200
+GRID_ROWS = 3
+GRID_COLS = 4
 
 
 @dataclass(frozen=True)
@@ -124,6 +126,12 @@ class App:
         self.cap: cv2.VideoCapture | None = self.open_selected_camera()
         self.photo: ImageTk.PhotoImage | None = None
         self.image_id: int | None = None
+        self.hover_cell: tuple[int, int] | None = None
+        self.motor_states = [False] * (GRID_ROWS * GRID_COLS)
+
+        self.canvas.bind("<Motion>", self.on_mouse_move)
+        self.canvas.bind("<Leave>", self.on_mouse_leave)
+        self.canvas.bind("<Button-1>", self.on_click)
 
         if self.cap is None or not self.cap.isOpened():
             self.error("no se pudo abrir la camara")
@@ -226,6 +234,107 @@ class App:
         else:
             self.canvas.itemconfigure(self.image_id, image=self.photo)
             self.canvas.coords(self.image_id, x, y)
+
+        self.draw_grid(width, height)
+
+    def draw_grid(self, width: int, height: int) -> None:
+        self.canvas.delete("grid")
+        cell_width = width / GRID_COLS
+        cell_height = height / GRID_ROWS
+
+        for row in range(GRID_ROWS):
+            for col in range(GRID_COLS):
+                motor = self.motor_for_cell(row, col)
+                x1 = col * cell_width
+                y1 = row * cell_height
+                x2 = x1 + cell_width
+                y2 = y1 + cell_height
+                active = self.motor_states[motor - 1]
+                hovered = self.hover_cell == (row, col)
+
+                if active:
+                    self.canvas.create_rectangle(
+                        x1,
+                        y1,
+                        x2,
+                        y2,
+                        fill="#00ff66",
+                        stipple="gray50",
+                        outline="",
+                        tags="grid",
+                    )
+
+                if hovered:
+                    self.canvas.create_rectangle(
+                        x1,
+                        y1,
+                        x2,
+                        y2,
+                        fill="#000000",
+                        stipple="gray50",
+                        outline="",
+                        tags="grid",
+                    )
+
+                self.canvas.create_rectangle(
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    outline="#ffffff",
+                    width=1,
+                    tags="grid",
+                )
+                self.canvas.create_text(
+                    x1 + 14,
+                    y1 + 14,
+                    text=str(motor),
+                    fill="#ffffff",
+                    anchor=tk.NW,
+                    font=("Segoe UI", 12),
+                    tags="grid",
+                )
+
+    def motor_for_cell(self, row: int, col: int) -> int:
+        if row % 2 == 0:
+            return row * GRID_COLS + col + 1
+        return row * GRID_COLS + (GRID_COLS - col)
+
+    def cell_from_position(self, x: int, y: int) -> tuple[int, int] | None:
+        width = max(1, self.canvas.winfo_width())
+        height = max(1, self.canvas.winfo_height())
+
+        if x < 0 or y < 0 or x >= width or y >= height:
+            return None
+
+        col = min(GRID_COLS - 1, int(x / (width / GRID_COLS)))
+        row = min(GRID_ROWS - 1, int(y / (height / GRID_ROWS)))
+        return row, col
+
+    def on_mouse_move(self, event) -> None:
+        self.hover_cell = self.cell_from_position(event.x, event.y)
+        self.draw_grid(max(1, self.canvas.winfo_width()), max(1, self.canvas.winfo_height()))
+
+    def on_mouse_leave(self, _event) -> None:
+        self.hover_cell = None
+        self.draw_grid(max(1, self.canvas.winfo_width()), max(1, self.canvas.winfo_height()))
+
+    def on_click(self, event) -> None:
+        cell = self.cell_from_position(event.x, event.y)
+        if cell is None:
+            return
+
+        row, col = cell
+        motor = self.motor_for_cell(row, col)
+        self.motor_states[motor - 1] = not self.motor_states[motor - 1]
+        self.send_motor_state(motor, self.motor_states[motor - 1])
+        self.draw_grid(max(1, self.canvas.winfo_width()), max(1, self.canvas.winfo_height()))
+
+    def send_motor_state(self, motor: int, active: bool) -> None:
+        command = f"{'on' if active else 'off'} {motor}\n"
+        if self.serial_connection is not None:
+            self.serial_connection.write(command.encode("ascii"))
+        self.status.configure(text=f"motor {motor} {'on' if active else 'off'}")
 
     def cover_resize(self, image: Image.Image, target: DisplaySize) -> Image.Image:
         source_width, source_height = image.size
