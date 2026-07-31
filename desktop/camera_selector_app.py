@@ -249,6 +249,7 @@ class App:
             self.root.after(250, self.update)
             return
 
+        frame = cv2.flip(frame, 1)
         self.process_hand_gesture(frame)
         self.show(frame)
         self.root.after(FRAME_DELAY_MS, self.update)
@@ -334,7 +335,7 @@ class App:
                         y1,
                         x2,
                         y2,
-                        fill="#00ff66",
+                        fill="#ff8c00",
                         stipple="gray50",
                         outline="",
                         tags="grid",
@@ -417,7 +418,7 @@ class App:
 
     def draw_fingertips(self, width: int, height: int) -> None:
         self.canvas.delete("fingertip")
-        for label, source_x, source_y in self.fingertips:
+        for _label, source_x, source_y in self.fingertips:
             x = int((source_x / CAMERA_WIDTH) * width)
             y = int((source_y / CAMERA_HEIGHT) * height)
             radius = 6
@@ -427,18 +428,9 @@ class App:
                 y - radius,
                 x + radius,
                 y + radius,
-                fill="#ffcc00",
-                outline="#000000",
-                width=1,
-                tags="fingertip",
-            )
-            self.canvas.create_text(
-                x + 9,
-                y - 9,
-                text=label,
-                fill="#ffcc00",
-                anchor=tk.W,
-                font=("Segoe UI", 9),
+                fill="",
+                outline="#ff3333",
+                width=2,
                 tags="fingertip",
             )
 
