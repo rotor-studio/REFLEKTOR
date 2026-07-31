@@ -12,6 +12,7 @@ No se alimentan motores desde el pin de 5 V del Arduino. Los motores usan una fu
 
 - `arduino/ReflektorMotorController/ReflektorMotorController.ino`: firmware principal.
 - `arduino/I2CScanner/I2CScanner.ino`: escáner I²C independiente.
+- `desktop/camera_selector_app.py`: primera app de escritorio para seleccionar y previsualizar cámaras.
 - `docs/hardware_12_motores_mcp23017.md`: esquema de conexiones, tabla pin a pin, componentes y fallos típicos.
 
 ## Librerías Arduino necesarias
@@ -59,3 +60,14 @@ En el sketch principal, abrir el Monitor Serial a `115200` baudios y enviar coma
 - `help`: muestra los comandos disponibles.
 
 El código también procesa comandos si el Monitor Serial está configurado como `No line ending`, usando un pequeño timeout tras recibir caracteres. Aun así, para depurar es más claro usar `Newline`.
+
+## App de cámara
+
+Primera versión mínima: selector oscuro de cámara con nombres y preview.
+
+```powershell
+cd "D:\CODE CODEX\REFLEKTOR"
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r desktop\requirements.txt
+.\.venv\Scripts\python.exe desktop\camera_selector_app.py
+```

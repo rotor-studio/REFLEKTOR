@@ -11,3 +11,9 @@ build/
 .idea/
 Thumbs.db
 Desktop.ini
+
+# Python app local artifacts
+.venv/
+__pycache__/
+*.py[cod]
+*.log
