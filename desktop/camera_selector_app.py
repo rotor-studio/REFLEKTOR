@@ -18,8 +18,8 @@ CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 360
 FRAME_DELAY_MS = 33
 SERIAL_BAUD = 115200
-GRID_ROWS = 3
-GRID_COLS = 4
+GRID_ROWS = 4
+GRID_COLS = 3
 
 
 @dataclass(frozen=True)
@@ -127,11 +127,10 @@ class App:
         self.photo: ImageTk.PhotoImage | None = None
         self.image_id: int | None = None
         self.hover_cell: tuple[int, int] | None = None
-        self.motor_states = [False] * (GRID_ROWS * GRID_COLS)
+        self.active_motor: int | None = None
 
         self.canvas.bind("<Motion>", self.on_mouse_move)
         self.canvas.bind("<Leave>", self.on_mouse_leave)
-        self.canvas.bind("<Button-1>", self.on_click)
 
         if self.cap is None or not self.cap.isOpened():
             self.error("no se pudo abrir la camara")
@@ -249,7 +248,7 @@ class App:
                 y1 = row * cell_height
                 x2 = x1 + cell_width
                 y2 = y1 + cell_height
-                active = self.motor_states[motor - 1]
+                active = self.active_motor == motor
                 hovered = self.hover_cell == (row, col)
 
                 if active:
@@ -312,22 +311,28 @@ class App:
         return row, col
 
     def on_mouse_move(self, event) -> None:
+        previous_motor = self.active_motor
         self.hover_cell = self.cell_from_position(event.x, event.y)
+
+        current_motor = None
+        if self.hover_cell is not None:
+            row, col = self.hover_cell
+            current_motor = self.motor_for_cell(row, col)
+
+        if current_motor != previous_motor:
+            if previous_motor is not None:
+                self.send_motor_state(previous_motor, False)
+            if current_motor is not None:
+                self.send_motor_state(current_motor, True)
+            self.active_motor = current_motor
+
         self.draw_grid(max(1, self.canvas.winfo_width()), max(1, self.canvas.winfo_height()))
 
     def on_mouse_leave(self, _event) -> None:
+        if self.active_motor is not None:
+            self.send_motor_state(self.active_motor, False)
+            self.active_motor = None
         self.hover_cell = None
-        self.draw_grid(max(1, self.canvas.winfo_width()), max(1, self.canvas.winfo_height()))
-
-    def on_click(self, event) -> None:
-        cell = self.cell_from_position(event.x, event.y)
-        if cell is None:
-            return
-
-        row, col = cell
-        motor = self.motor_for_cell(row, col)
-        self.motor_states[motor - 1] = not self.motor_states[motor - 1]
-        self.send_motor_state(motor, self.motor_states[motor - 1])
         self.draw_grid(max(1, self.canvas.winfo_width()), max(1, self.canvas.winfo_height()))
 
     def send_motor_state(self, motor: int, active: bool) -> None:
