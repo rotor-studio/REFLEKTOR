@@ -25,6 +25,7 @@ FRAME_DELAY_MS = 33
 SERIAL_BAUD = 115200
 GRID_ROWS = 4
 GRID_COLS = 3
+GRID_MARGIN_RATIO = 0.12
 MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
 MODEL_PATH = Path(__file__).resolve().parent / "models" / "hand_landmarker.task"
 FINGERTIPS = [
@@ -40,6 +41,14 @@ FINGERTIPS = [
 class DisplaySize:
     width: int
     height: int
+
+
+@dataclass(frozen=True)
+class GridRect:
+    x: float
+    y: float
+    width: float
+    height: float
 
 
 CAMERAS = [
@@ -277,9 +286,14 @@ class App:
 
         active_motors: set[int] = set()
         for _label, x, y in self.fingertips:
-            row = min(GRID_ROWS - 1, max(0, int((y / frame_height) * GRID_ROWS)))
-            col = min(GRID_COLS - 1, max(0, int((x / frame_width) * GRID_COLS)))
-            active_motors.add(self.motor_for_cell(row, col))
+            canvas_width = max(1, self.canvas.winfo_width())
+            canvas_height = max(1, self.canvas.winfo_height())
+            canvas_x = int((x / frame_width) * canvas_width)
+            canvas_y = int((y / frame_height) * canvas_height)
+            cell = self.cell_from_position(canvas_x, canvas_y)
+            if cell is not None:
+                row, col = cell
+                active_motors.add(self.motor_for_cell(row, col))
 
         self.update_active_motors(active_motors)
 
@@ -316,14 +330,15 @@ class App:
 
     def draw_grid(self, width: int, height: int) -> None:
         self.canvas.delete("grid")
-        cell_width = width / GRID_COLS
-        cell_height = height / GRID_ROWS
+        grid = self.grid_rect(width, height)
+        cell_width = grid.width / GRID_COLS
+        cell_height = grid.height / GRID_ROWS
 
         for row in range(GRID_ROWS):
             for col in range(GRID_COLS):
                 motor = self.motor_for_cell(row, col)
-                x1 = col * cell_width
-                y1 = row * cell_height
+                x1 = grid.x + col * cell_width
+                y1 = grid.y + row * cell_height
                 x2 = x1 + cell_width
                 y2 = y1 + cell_height
                 active = motor in self.active_motors
@@ -380,13 +395,37 @@ class App:
     def cell_from_position(self, x: int, y: int) -> tuple[int, int] | None:
         width = max(1, self.canvas.winfo_width())
         height = max(1, self.canvas.winfo_height())
+        grid = self.grid_rect(width, height)
 
-        if x < 0 or y < 0 or x >= width or y >= height:
+        if x < grid.x or y < grid.y or x >= grid.x + grid.width or y >= grid.y + grid.height:
             return None
 
-        col = min(GRID_COLS - 1, int(x / (width / GRID_COLS)))
-        row = min(GRID_ROWS - 1, int(y / (height / GRID_ROWS)))
+        col = min(GRID_COLS - 1, int((x - grid.x) / (grid.width / GRID_COLS)))
+        row = min(GRID_ROWS - 1, int((y - grid.y) / (grid.height / GRID_ROWS)))
         return row, col
+
+    def grid_rect(self, width: int, height: int) -> GridRect:
+        margin = min(width, height) * GRID_MARGIN_RATIO
+        available_width = max(1, width - margin * 2)
+        available_height = max(1, height - margin * 2)
+
+        # Mantiene la proporción 3:4 de la rejilla para que las celdas sean cuadradas.
+        target_ratio = GRID_COLS / GRID_ROWS
+        available_ratio = available_width / available_height
+
+        if available_ratio > target_ratio:
+            grid_height = available_height
+            grid_width = grid_height * target_ratio
+        else:
+            grid_width = available_width
+            grid_height = grid_width / target_ratio
+
+        return GridRect(
+            x=(width - grid_width) / 2,
+            y=(height - grid_height) / 2,
+            width=grid_width,
+            height=grid_height,
+        )
 
     def on_mouse_move(self, event) -> None:
         if self.fingertips:
