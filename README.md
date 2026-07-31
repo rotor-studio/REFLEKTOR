@@ -12,9 +12,7 @@ No se alimentan motores desde el pin de 5 V del Arduino. Los motores usan una fu
 
 - `arduino/ReflektorMotorController/ReflektorMotorController.ino`: firmware principal.
 - `arduino/I2CScanner/I2CScanner.ino`: escáner I²C independiente.
-- `desktop/face_motor_mirror.py`: prueba con cámara, detección de cara y control Serial por máscara.
 - `docs/hardware_12_motores_mcp23017.md`: esquema de conexiones, tabla pin a pin, componentes y fallos típicos.
-- `docs/face_motor_mirror.md`: instrucciones de la prueba cámara-motores.
 
 ## Librerías Arduino necesarias
 
@@ -59,16 +57,5 @@ En el sketch principal, abrir el Monitor Serial a `115200` baudios y enviar coma
 - `status`: muestra el estado guardado de los 12 motores.
 - `test`: repite la secuencia de prueba.
 - `help`: muestra los comandos disponibles.
-- `mask 100000000001`: fija de golpe el estado de los 12 motores.
 
 El código también procesa comandos si el Monitor Serial está configurado como `No line ending`, usando un pequeño timeout tras recibir caracteres. Aun así, para depurar es más claro usar `Newline`.
-
-## Prueba cámara -> cara -> motores
-
-Ver instrucciones completas en [docs/face_motor_mirror.md](docs/face_motor_mirror.md).
-
-La app usa una sola ventana con selector de cámara, vista de vídeo y estado Serial:
-
-```powershell
-python desktop\face_motor_mirror.py --port COM7
-```

@@ -11,10 +11,3 @@ build/
 .idea/
 Thumbs.db
 Desktop.ini
-
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-*.log
-desktop/camera_test_*.jpg

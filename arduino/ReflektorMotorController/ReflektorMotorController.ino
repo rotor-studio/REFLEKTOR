@@ -154,7 +154,6 @@ void imprimirAyudaSerial() {
   Serial.println(F("  off N      -> apagar motor N"));
   Serial.println(F("  allon      -> encender todos"));
   Serial.println(F("  alloff     -> apagar todos"));
-  Serial.println(F("  mask BITS  -> fijar 12 motores, ej. mask 100000000001"));
   Serial.println(F("  pin N      -> alternar pin MCP23017 N, 0..15"));
   Serial.println(F("  pinon N    -> poner pin MCP23017 N en HIGH"));
   Serial.println(F("  pinoff N   -> poner pin MCP23017 N en LOW"));
@@ -253,46 +252,6 @@ void escribirPinMcp(uint8_t pin, bool estado) {
 void alternarPinMcp(uint8_t pin) {
   bool estadoActual = mcp.digitalRead(pin) == HIGH;
   escribirPinMcp(pin, !estadoActual);
-}
-
-bool aplicarMascaraMotores(const char *bits) {
-  bool estados[MOTOR_COUNT];
-  uint8_t cantidadBits = 0;
-
-  for (const char *p = bits; *p != '\0'; p++) {
-    if (*p == ' ' || *p == '\t') {
-      continue;
-    }
-
-    if (*p != '0' && *p != '1') {
-      Serial.println(F("Uso: mask BITS, con 12 bits 0/1. Ejemplo: mask 100000000001"));
-      return false;
-    }
-
-    if (cantidadBits >= MOTOR_COUNT) {
-      Serial.println(F("Mascara demasiado larga. Debe tener 12 bits."));
-      return false;
-    }
-
-    estados[cantidadBits] = (*p == '1');
-    cantidadBits++;
-  }
-
-  if (cantidadBits != MOTOR_COUNT) {
-    Serial.println(F("Mascara incompleta. Debe tener 12 bits."));
-    return false;
-  }
-
-  for (uint8_t motor = 1; motor <= MOTOR_COUNT; motor++) {
-    escribirMotor(motor, estados[motor - 1]);
-  }
-
-  Serial.print(F("MASK OK "));
-  for (uint8_t i = 0; i < MOTOR_COUNT; i++) {
-    Serial.print(estados[i] ? F("1") : F("0"));
-  }
-  Serial.println();
-  return true;
 }
 
 void ejecutarSecuenciaRandom(uint8_t pasos) {
@@ -396,11 +355,6 @@ void procesarComandoSerial(char *comando) {
 
   if (strcmp(comando, "map") == 0) {
     imprimirMapaMotores();
-    return;
-  }
-
-  if (strncmp(comando, "mask ", 5) == 0) {
-    aplicarMascaraMotores(comando + 5);
     return;
   }
 
