@@ -5,6 +5,7 @@ from tkinter import ttk
 
 import cv2
 from PIL import Image, ImageTk
+import serial
 from serial.tools import list_ports
 
 
@@ -12,6 +13,10 @@ WINDOW_TITLE = "REFLEKTOR"
 BG = "#101010"
 FG = "#e8e8e8"
 ERROR = "#ff5c7a"
+CAMERA_WIDTH = 640
+CAMERA_HEIGHT = 360
+FRAME_DELAY_MS = 33
+SERIAL_BAUD = 115200
 
 
 CAMERAS = [
@@ -34,6 +39,12 @@ def serial_ports() -> list[str]:
     return ports or ["sin puertos"]
 
 
+def port_name_from_label(label: str) -> str | None:
+    if label == "sin puertos":
+        return None
+    return label.split(" - ", 1)[0].strip()
+
+
 class App:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
@@ -44,6 +55,7 @@ class App:
 
         self.selected_camera = tk.StringVar(value=CAMERAS[2])
         self.selected_port = tk.StringVar(value=serial_ports()[0])
+        self.serial_connection: serial.Serial | None = None
 
         self.top = tk.Frame(root, bg=BG)
         self.top.pack(fill=tk.X, padx=8, pady=8)
@@ -81,6 +93,23 @@ class App:
             pady=3,
         )
         self.refresh_button.pack(side=tk.LEFT)
+
+        self.connect_button = tk.Button(
+            self.top,
+            text="conectar",
+            command=self.toggle_serial,
+            bg="#202020",
+            fg=FG,
+            activebackground="#303030",
+            activeforeground=FG,
+            bd=0,
+            padx=8,
+            pady=3,
+        )
+        self.connect_button.pack(side=tk.LEFT, padx=(6, 0))
+
+        self.status = tk.Label(self.top, text="", bg=BG, fg=FG)
+        self.status.pack(side=tk.LEFT, padx=(8, 0))
 
         self.canvas = tk.Canvas(root, bg=BG, highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True)
@@ -120,8 +149,8 @@ class App:
     def open_selected_camera(self) -> cv2.VideoCapture:
         index = camera_index_from_label(self.selected_camera.get())
         cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
         return cap
 
@@ -137,6 +166,30 @@ class App:
         self.port_combo.configure(values=ports)
         self.selected_port.set(ports[0])
 
+    def toggle_serial(self) -> None:
+        if self.serial_connection is not None:
+            self.serial_connection.close()
+            self.serial_connection = None
+            self.connect_button.configure(text="conectar")
+            self.status.configure(text="desconectado")
+            return
+
+        port_name = port_name_from_label(self.selected_port.get())
+        if port_name is None:
+            self.status.configure(text="sin puerto")
+            return
+
+        try:
+            self.serial_connection = serial.Serial(port_name, SERIAL_BAUD, timeout=0.1)
+        except serial.SerialException as exc:
+            self.serial_connection = None
+            self.status.configure(text=f"error {port_name}")
+            print(exc)
+            return
+
+        self.connect_button.configure(text="desconectar")
+        self.status.configure(text=f"conectado {port_name}")
+
     def update(self) -> None:
         if self.cap is None:
             return
@@ -148,7 +201,7 @@ class App:
             return
 
         self.show(frame)
-        self.root.after(15, self.update)
+        self.root.after(FRAME_DELAY_MS, self.update)
 
     def show(self, frame) -> None:
         width = max(1, self.canvas.winfo_width())
@@ -156,7 +209,7 @@ class App:
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         image = Image.fromarray(rgb)
-        image.thumbnail((width, height), Image.Resampling.LANCZOS)
+        image.thumbnail((width, height), Image.Resampling.BILINEAR)
         self.photo = ImageTk.PhotoImage(image=image)
 
         x = width // 2
@@ -182,6 +235,9 @@ class App:
         if self.cap is not None:
             self.cap.release()
             self.cap = None
+        if self.serial_connection is not None:
+            self.serial_connection.close()
+            self.serial_connection = None
         self.root.destroy()
 
 
