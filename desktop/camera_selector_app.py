@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+from dataclasses import dataclass
 from tkinter import ttk
 
 import cv2
@@ -17,6 +18,12 @@ CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 360
 FRAME_DELAY_MS = 33
 SERIAL_BAUD = 115200
+
+
+@dataclass(frozen=True)
+class DisplaySize:
+    width: int
+    height: int
 
 
 CAMERAS = [
@@ -209,7 +216,7 @@ class App:
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         image = Image.fromarray(rgb)
-        image.thumbnail((width, height), Image.Resampling.BILINEAR)
+        image = self.cover_resize(image, DisplaySize(width, height))
         self.photo = ImageTk.PhotoImage(image=image)
 
         x = width // 2
@@ -219,6 +226,20 @@ class App:
         else:
             self.canvas.itemconfigure(self.image_id, image=self.photo)
             self.canvas.coords(self.image_id, x, y)
+
+    def cover_resize(self, image: Image.Image, target: DisplaySize) -> Image.Image:
+        source_width, source_height = image.size
+        scale = max(target.width / source_width, target.height / source_height)
+        resized_width = max(1, int(source_width * scale))
+        resized_height = max(1, int(source_height * scale))
+
+        image = image.resize((resized_width, resized_height), Image.Resampling.BILINEAR)
+
+        left = max(0, (resized_width - target.width) // 2)
+        top = max(0, (resized_height - target.height) // 2)
+        right = left + target.width
+        bottom = top + target.height
+        return image.crop((left, top, right, bottom))
 
     def error(self, text: str) -> None:
         self.canvas.delete("all")
