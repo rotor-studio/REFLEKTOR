@@ -63,7 +63,7 @@ El código también procesa comandos si el Monitor Serial está configurado como
 
 ## App de cámara
 
-Versión mínima: abre directamente `Microsoft LifeCam Studio` en índice OpenCV `2` y muestra preview.
+Versión mínima: selector de cámara, selector de puerto Serial y preview de vídeo. Por defecto usa `2 - Microsoft LifeCam Studio`.
 
 ```powershell
 cd "D:\CODE CODEX\REFLEKTOR"

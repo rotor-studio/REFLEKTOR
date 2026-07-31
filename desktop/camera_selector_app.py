@@ -4,20 +4,33 @@ import tkinter as tk
 
 import cv2
 from PIL import Image, ImageTk
+from serial.tools import list_ports
 
 
-CAMERA_INDEX = 2
 WINDOW_TITLE = "REFLEKTOR"
 BG = "#101010"
+FG = "#e8e8e8"
 ERROR = "#ff5c7a"
 
 
-def open_camera() -> cv2.VideoCapture:
-    cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_DSHOW)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-    return cap
+CAMERAS = [
+    "0 - Camara 0",
+    "1 - Camara 1",
+    "2 - Microsoft LifeCam Studio",
+    "3 - Camara 3",
+]
+
+
+def camera_index_from_label(label: str) -> int:
+    try:
+        return int(label.split("-", 1)[0].strip())
+    except Exception:
+        return 2
+
+
+def serial_ports() -> list[str]:
+    ports = [f"{port.device} - {port.description}" for port in list_ports.comports()]
+    return ports or ["sin puertos"]
 
 
 class App:
@@ -28,10 +41,37 @@ class App:
         self.root.geometry("980x620")
         self.root.protocol("WM_DELETE_WINDOW", self.close)
 
+        self.selected_camera = tk.StringVar(value=CAMERAS[2])
+        self.selected_port = tk.StringVar(value=serial_ports()[0])
+
+        self.top = tk.Frame(root, bg=BG)
+        self.top.pack(fill=tk.X, padx=8, pady=8)
+
+        self.camera_combo = self.combo(self.top, self.selected_camera, CAMERAS, 34)
+        self.camera_combo.pack(side=tk.LEFT, padx=(0, 6))
+        self.camera_combo.bind("<<ComboboxSelected>>", lambda _event: self.restart_camera())
+
+        self.port_combo = self.combo(self.top, self.selected_port, serial_ports(), 38)
+        self.port_combo.pack(side=tk.LEFT, padx=(0, 6))
+
+        self.refresh_button = tk.Button(
+            self.top,
+            text="refrescar puertos",
+            command=self.refresh_ports,
+            bg="#202020",
+            fg=FG,
+            activebackground="#303030",
+            activeforeground=FG,
+            bd=0,
+            padx=8,
+            pady=3,
+        )
+        self.refresh_button.pack(side=tk.LEFT)
+
         self.canvas = tk.Canvas(root, bg=BG, highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
-        self.cap: cv2.VideoCapture | None = open_camera()
+        self.cap: cv2.VideoCapture | None = self.open_selected_camera()
         self.photo: ImageTk.PhotoImage | None = None
         self.image_id: int | None = None
 
@@ -40,6 +80,48 @@ class App:
             return
 
         self.update()
+
+    def combo(self, parent, variable: tk.StringVar, values: list[str], width: int) -> ttk.Combobox:
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure(
+            "Dark.TCombobox",
+            fieldbackground="#181818",
+            background="#181818",
+            foreground=FG,
+            arrowcolor=FG,
+            bordercolor="#333333",
+            lightcolor="#333333",
+            darkcolor="#333333",
+        )
+        return ttk.Combobox(
+            parent,
+            textvariable=variable,
+            values=values,
+            width=width,
+            state="readonly",
+            style="Dark.TCombobox",
+        )
+
+    def open_selected_camera(self) -> cv2.VideoCapture:
+        index = camera_index_from_label(self.selected_camera.get())
+        cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        return cap
+
+    def restart_camera(self) -> None:
+        if self.cap is not None:
+            self.cap.release()
+        self.cap = self.open_selected_camera()
+        if not self.cap.isOpened():
+            self.error("no se pudo abrir la camara")
+
+    def refresh_ports(self) -> None:
+        ports = serial_ports()
+        self.port_combo.configure(values=ports)
+        self.selected_port.set(ports[0])
 
     def update(self) -> None:
         if self.cap is None:
