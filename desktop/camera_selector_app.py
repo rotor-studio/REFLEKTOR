@@ -50,7 +50,20 @@ class App:
 
         self.camera_combo = self.combo(self.top, self.selected_camera, CAMERAS, 34)
         self.camera_combo.pack(side=tk.LEFT, padx=(0, 6))
-        self.camera_combo.bind("<<ComboboxSelected>>", lambda _event: self.restart_camera())
+
+        self.select_camera_button = tk.Button(
+            self.top,
+            text="seleccionar",
+            command=self.restart_camera,
+            bg="#202020",
+            fg=FG,
+            activebackground="#303030",
+            activeforeground=FG,
+            bd=0,
+            padx=8,
+            pady=3,
+        )
+        self.select_camera_button.pack(side=tk.LEFT, padx=(0, 6))
 
         self.port_combo = self.combo(self.top, self.selected_port, serial_ports(), 38)
         self.port_combo.pack(side=tk.LEFT, padx=(0, 6))
