@@ -28,6 +28,13 @@ GRID_COLS = 3
 PINCH_THRESHOLD = 0.08
 MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
 MODEL_PATH = Path(__file__).resolve().parent / "models" / "hand_landmarker.task"
+FINGERTIPS = [
+    (4, "pulgar"),
+    (8, "indice"),
+    (12, "corazon"),
+    (16, "anular"),
+    (20, "menique"),
+]
 
 
 @dataclass(frozen=True)
@@ -158,6 +165,7 @@ class App:
         self.active_motor: int | None = None
         self.gesture_cell: tuple[int, int] | None = None
         self.gesture_point: tuple[int, int] | None = None
+        self.fingertips: list[tuple[str, int, int]] = []
 
         self.canvas.bind("<Motion>", self.on_mouse_move)
         self.canvas.bind("<Leave>", self.on_mouse_leave)
@@ -256,9 +264,20 @@ class App:
         if not result.hand_landmarks:
             self.update_gesture_cell(None)
             self.gesture_point = None
+            self.fingertips = []
             return
 
         landmarks = result.hand_landmarks[0]
+        frame_height, frame_width = frame.shape[:2]
+        self.fingertips = [
+            (
+                label,
+                int(landmarks[index].x * frame_width),
+                int(landmarks[index].y * frame_height),
+            )
+            for index, label in FINGERTIPS
+        ]
+
         thumb = landmarks[4]
         middle = landmarks[12]
 
@@ -271,7 +290,6 @@ class App:
             self.gesture_point = None
             return
 
-        frame_height, frame_width = frame.shape[:2]
         gesture_x = int(((thumb.x + middle.x) * 0.5) * frame_width)
         gesture_y = int(((thumb.y + middle.y) * 0.5) * frame_height)
         self.gesture_point = (gesture_x, gesture_y)
@@ -318,6 +336,7 @@ class App:
 
         self.draw_grid(width, height)
         self.draw_gesture_pointer(width, height)
+        self.draw_fingertips(width, height)
 
     def draw_grid(self, width: int, height: int) -> None:
         self.canvas.delete("grid")
@@ -449,6 +468,33 @@ class App:
             width=2,
             tags="gesture",
         )
+
+    def draw_fingertips(self, width: int, height: int) -> None:
+        self.canvas.delete("fingertip")
+        for label, source_x, source_y in self.fingertips:
+            x = int((source_x / CAMERA_WIDTH) * width)
+            y = int((source_y / CAMERA_HEIGHT) * height)
+            radius = 6
+
+            self.canvas.create_oval(
+                x - radius,
+                y - radius,
+                x + radius,
+                y + radius,
+                fill="#ffcc00",
+                outline="#000000",
+                width=1,
+                tags="fingertip",
+            )
+            self.canvas.create_text(
+                x + 9,
+                y - 9,
+                text=label,
+                fill="#ffcc00",
+                anchor=tk.W,
+                font=("Segoe UI", 9),
+                tags="fingertip",
+            )
 
     def cover_resize(self, image: Image.Image, target: DisplaySize) -> Image.Image:
         source_width, source_height = image.size
