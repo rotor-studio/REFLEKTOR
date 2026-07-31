@@ -17,3 +17,4 @@ Desktop.ini
 __pycache__/
 *.py[cod]
 *.log
+desktop/models/*.task
