@@ -335,9 +335,10 @@ class App:
         cell_height = grid.height / GRID_ROWS
 
         for row in range(GRID_ROWS):
+            row_offset = self.row_offset(row, cell_width)
             for col in range(GRID_COLS):
                 motor = self.motor_for_cell(row, col)
-                x1 = grid.x + col * cell_width
+                x1 = grid.x + row_offset + col * cell_width
                 y1 = grid.y + row * cell_height
                 x2 = x1 + cell_width
                 y2 = y1 + cell_height
@@ -400,9 +401,19 @@ class App:
         if x < grid.x or y < grid.y or x >= grid.x + grid.width or y >= grid.y + grid.height:
             return None
 
-        col = min(GRID_COLS - 1, int((x - grid.x) / (grid.width / GRID_COLS)))
         row = min(GRID_ROWS - 1, int((y - grid.y) / (grid.height / GRID_ROWS)))
+        cell_width = grid.width / GRID_COLS
+        row_x = x - grid.x - self.row_offset(row, cell_width)
+
+        if row_x < 0 or row_x >= grid.width:
+            return None
+
+        col = min(GRID_COLS - 1, int(row_x / cell_width))
         return row, col
+
+    def row_offset(self, row: int, cell_width: float) -> float:
+        # Filas 2 y 4 medio cuadro hacia la izquierda.
+        return -cell_width * 0.5 if row % 2 == 1 else 0
 
     def grid_rect(self, width: int, height: int) -> GridRect:
         margin = min(width, height) * GRID_MARGIN_RATIO
